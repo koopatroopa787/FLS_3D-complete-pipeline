@@ -1,0 +1,281 @@
+"""
+Adapted data loader for Mill Analysis Project using Trimesh
+Works with Python 3.13 and Trimesh/PyMeshLab instead of Open3D
+Professional implementation with comprehensive error handling
+"""
+
+import os
+import numpy as np
+import trimesh
+import pymeshlab
+from pathlib import Path
+from typing import Tuple, Optional, Dict, Any
+import time
+import gc
+
+from config import get_file_paths, ProcessingConfig
+
+
+class TrimeshPointCloudLoader:
+    """Professional point cloud loader using Trimesh for Python 3.13 compatibility."""
+    
+    def __init__(self):
+        self.config = ProcessingConfig()
+        self.file_paths = get_file_paths()
+        
+    def validate_file_exists(self, file_path: Path) -> bool:
+        """Validate that a file exists and is readable."""
+        if not file_path.exists():
+            print(f"Error: File not found: {file_path}")
+            return False
+            
+        if not file_path.is_file():
+            print(f"Error: Path is not a file: {file_path}")
+            return False
+            
+        return True
+    
+    def get_file_info(self, file_path: Path) -> Dict[str, Any]:
+        """Get basic file information."""
+        if not self.validate_file_exists(file_path):
+            return {}
+            
+        stat = file_path.stat()
+        size_mb = stat.st_size / (1024 * 1024)
+        
+        return {
+            'path': str(file_path),
+            'name': file_path.name,
+            'size_mb': round(size_mb, 1),
+            'exists': True
+        }
+    
+    def load_point_cloud(self, file_path: Path, downsample: bool = False, 
+                        max_points: Optional[int] = None) -> Optional[trimesh.PointCloud]:
+        """
+        Load point cloud using Trimesh with optional downsampling.
+        
+        Args:
+            file_path: Path to point cloud file
+            downsample: Whether to apply downsampling
+            max_points: Maximum points to keep (if downsampling)
+            
+        Returns:
+            Loaded point cloud or None if failed
+        """
+        if not self.validate_file_exists(file_path):
+            return None
+            
+        print(f"Loading point cloud: {file_path.name}")
+        start_time = time.time()
+        
+        try:
+            # Load point cloud using trimesh
+            mesh = trimesh.load(str(file_path))
+            
+            # Handle different mesh types
+            if hasattr(mesh, 'vertices'):
+                # It's a mesh, extract vertices as points
+                points = mesh.vertices
+                colors = None
+                if hasattr(mesh, 'visual') and hasattr(mesh.visual, 'vertex_colors'):
+                    colors = mesh.visual.vertex_colors[:, :3] / 255.0  # Normalize to 0-1
+            elif isinstance(mesh, trimesh.PointCloud):
+                # It's already a point cloud
+                points = mesh.vertices
+                colors = mesh.colors if hasattr(mesh, 'colors') else None
+            else:
+                print(f"Error: Unsupported mesh type in {file_path.name}")
+                return None
+                
+            if len(points) == 0:
+                print(f"Error: No points found in {file_path.name}")
+                return None
+                
+            original_points = len(points)
+            print(f"Loaded {original_points:,} points")
+            
+            # Apply downsampling if requested
+            if downsample and max_points and original_points > max_points:
+                print(f"Downsampling from {original_points:,} to {max_points:,} points...")
+                points, colors = self._downsample_points(points, colors, max_points)
+                final_points = len(points)
+                reduction_pct = ((original_points - final_points) / original_points) * 100
+                print(f"Downsampling complete: {final_points:,} points ({reduction_pct:.1f}% reduction)")
+            
+            # Create trimesh PointCloud object
+            point_cloud = trimesh.PointCloud(vertices=points, colors=colors)
+            
+            load_time = time.time() - start_time
+            print(f"Loading completed in {load_time:.2f} seconds")
+            
+            return point_cloud
+            
+        except Exception as e:
+            print(f"Error loading {file_path.name}: {str(e)}")
+            return None
+    
+    def _downsample_points(self, points: np.ndarray, colors: Optional[np.ndarray], 
+                          target_points: int) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+        """Smart downsampling preserving structural information."""
+        if len(points) <= target_points:
+            return points, colors
+            
+        # Calculate step size for uniform sampling
+        step = len(points) // target_points
+        indices = np.arange(0, len(points), step)[:target_points]
+        
+        downsampled_points = points[indices]
+        downsampled_colors = colors[indices] if colors is not None else None
+        
+        return downsampled_points, downsampled_colors
+    
+    def analyze_point_cloud(self, point_cloud: trimesh.PointCloud, 
+                           name: str = "Point Cloud") -> Dict[str, Any]:
+        """Analyze point cloud properties."""
+        if point_cloud is None or len(point_cloud.vertices) == 0:
+            return {}
+            
+        points = point_cloud.vertices
+        
+        # Basic statistics
+        center = np.mean(points, axis=0)
+        bbox_min = np.min(points, axis=0)
+        bbox_max = np.max(points, axis=0)
+        dimensions = bbox_max - bbox_min
+        
+        # Calculate characteristic radius (95th percentile of distances from center)
+        radial_distances = np.sqrt(np.sum((points - center)**2, axis=1))
+        char_radius = np.percentile(radial_distances, 95)
+        
+        analysis = {
+            'name': name,
+            'num_points': len(points),
+            'center': center,
+            'dimensions': dimensions,
+            'max_dimension': np.max(dimensions),
+            'characteristic_radius': char_radius,
+            'has_colors': point_cloud.colors is not None,
+            'bbox_min': bbox_min,
+            'bbox_max': bbox_max
+        }
+        
+        return analysis
+    
+    def print_analysis(self, analysis: Dict[str, Any]) -> None:
+        """Print formatted analysis results."""
+        if not analysis:
+            print("No analysis data available")
+            return
+            
+        print(f"\n=== {analysis['name']} Analysis ===")
+        print(f"Points: {analysis['num_points']:,}")
+        print(f"Center: [{analysis['center'][0]:.2f}, {analysis['center'][1]:.2f}, {analysis['center'][2]:.2f}]")
+        print(f"Dimensions: [{analysis['dimensions'][0]:.2f}, {analysis['dimensions'][1]:.2f}, {analysis['dimensions'][2]:.2f}]")
+        print(f"Max dimension: {analysis['max_dimension']:.2f}")
+        print(f"Characteristic radius: {analysis['characteristic_radius']:.2f}")
+        print(f"Has colors: {analysis['has_colors']}")
+    
+    def load_reference_file(self) -> Tuple[Optional[trimesh.PointCloud], Dict[str, Any]]:
+        """Load reference file (NO DOWNSAMPLING - CRITICAL)."""
+        print("\n" + "="*60)
+        print("LOADING REFERENCE FILE (NO DOWNSAMPLING)")
+        print("="*60)
+        
+        ref_path = self.file_paths['reference']
+        file_info = self.get_file_info(ref_path)
+        
+        if not file_info:
+            return None, {}
+            
+        print(f"Reference file: {file_info['name']} ({file_info['size_mb']} MB)")
+        
+        # Load WITHOUT downsampling (critical requirement)
+        point_cloud = self.load_point_cloud(ref_path, downsample=False)
+        
+        if point_cloud is None:
+            return None, file_info
+            
+        # Analyze reference
+        analysis = self.analyze_point_cloud(point_cloud, "Reference Shell")
+        self.print_analysis(analysis)
+        
+        return point_cloud, {**file_info, **analysis}
+    
+    def load_inner_scan_file(self) -> Tuple[Optional[trimesh.PointCloud], Dict[str, Any]]:
+        """Load inner scan file (WITH SMART DOWNSAMPLING)."""
+        print("\n" + "="*60) 
+        print("LOADING INNER SCAN FILE (WITH SMART DOWNSAMPLING)")
+        print("="*60)
+        
+        scan_path = self.file_paths['inner_scan']
+        file_info = self.get_file_info(scan_path)
+        
+        if not file_info:
+            return None, {}
+            
+        print(f"Inner scan file: {file_info['name']} ({file_info['size_mb']} MB)")
+        
+        # Determine if downsampling needed
+        downsample_needed = file_info['size_mb'] > 500  # Rough estimate for 2M+ points
+        max_points = self.config.INNER_SCAN_MAX_POINTS if downsample_needed else None
+        
+        if downsample_needed:
+            print(f"Large file detected - will downsample to {max_points:,} points")
+        
+        # Load with conditional downsampling
+        point_cloud = self.load_point_cloud(scan_path, downsample=downsample_needed, max_points=max_points)
+        
+        if point_cloud is None:
+            return None, file_info
+            
+        # Analyze inner scan
+        analysis = self.analyze_point_cloud(point_cloud, "Inner Scan")
+        self.print_analysis(analysis)
+        
+        return point_cloud, {**file_info, **analysis}
+    
+    def cleanup_memory(self) -> None:
+        """Force garbage collection to free memory."""
+        gc.collect()
+        print("Memory cleanup performed")
+
+
+def test_trimesh_data_loader():
+    """Test function for Trimesh data loader."""
+    print("="*80)
+    print("MILL ANALYSIS - TRIMESH DATA LOADER TEST")
+    print("="*80)
+    
+    loader = TrimeshPointCloudLoader()
+    
+    # Test reference file loading
+    ref_pcd, ref_info = loader.load_reference_file()
+    
+    if ref_pcd is not None:
+        print("[SUCCESS] Reference file loaded successfully")
+    else:
+        print("[ERROR] Failed to load reference file")
+        return False
+    
+    # Test inner scan file loading
+    scan_pcd, scan_info = loader.load_inner_scan_file()
+    
+    if scan_pcd is not None:
+        print("[SUCCESS] Inner scan file loaded successfully")
+    else:
+        print("[ERROR] Failed to load inner scan file")
+        return False
+    
+    # Memory cleanup
+    loader.cleanup_memory()
+    
+    print("\n" + "="*80)
+    print("TRIMESH DATA LOADER TEST COMPLETED SUCCESSFULLY")
+    print("="*80)
+    
+    return True
+
+
+if __name__ == "__main__":
+    test_trimesh_data_loader()
