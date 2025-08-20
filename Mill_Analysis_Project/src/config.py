@@ -2,6 +2,8 @@
 Clean Configuration for Mill Analysis Project
 Open3D-focused implementation with minimal dependencies
 Professional Python 3.11 compatible
+Now includes E57 format support with automatic conversion
+Enhanced with intelligent file selection capabilities
 """
 
 from pathlib import Path
@@ -26,7 +28,12 @@ def get_file_paths() -> Dict[str, Path]:
         'intermediate_dir': root / 'output' / 'intermediate',
         'visualizations_dir': root / 'output' / 'visualizations',
         'aligned_scans_dir': root / 'output' / 'aligned_scans',
-        'heatmaps_dir': root / 'output' / 'heatmaps'
+        'heatmaps_dir': root / 'output' / 'heatmaps',
+        'data_reference_dir': root / 'data' / 'reference',
+        'data_inner_scans_dir': root / 'data' / 'inner_scans',
+        # Aliases for file_selector.py compatibility
+        'reference_dir': root / 'data' / 'reference',
+        'inner_scans_dir': root / 'data' / 'inner_scans'
     }
 
 
@@ -70,10 +77,18 @@ class ProcessingConfig:
 
 
 class FileConfig:
-    """File handling configuration."""
+    """File handling configuration with E57 support and intelligent file selection."""
     
-    SUPPORTED_FORMATS = ['.ply', '.pcd', '.xyz']
+    SUPPORTED_FORMATS = ['.ply', '.pcd', '.xyz', '.e57']  # Added E57 support
     DEFAULT_OUTPUT_FORMAT = '.ply'
+    
+    # E57 specific configuration
+    E57_CONVERSION_ENABLED = True
+    E57_AUTO_CONVERSION = True  # Automatically convert E57 files when detected
+    
+    # File selection configuration
+    ENABLE_INTELLIGENT_FILE_SELECTION = False  # Default: use hardcoded paths for compatibility
+    INTERACTIVE_FILE_SELECTION = True  # Allow user interaction when multiple files found
     
     # Create output directories
     @staticmethod
@@ -115,5 +130,14 @@ if __name__ == "__main__":
     print(f"  Target ratio: {config.TARGET_RATIO}")
     print(f"  Heatmap max points: {config.HEATMAP_MAX_POINTS:,}")
     print(f"  Enhanced wear bins: {len(config.ENHANCED_WEAR_BINS)} bins")
+    
+    # Test E57 support
+    file_config = FileConfig()
+    print(f"\nFile configuration:")
+    print(f"  Supported formats: {file_config.SUPPORTED_FORMATS}")
+    print(f"  E57 conversion enabled: {file_config.E57_CONVERSION_ENABLED}")
+    print(f"  E57 auto conversion: {file_config.E57_AUTO_CONVERSION}")
+    print(f"  Intelligent file selection: {file_config.ENABLE_INTELLIGENT_FILE_SELECTION}")
+    print(f"  Interactive file selection: {file_config.INTERACTIVE_FILE_SELECTION}")
     
     print("\nConfiguration module test completed successfully")

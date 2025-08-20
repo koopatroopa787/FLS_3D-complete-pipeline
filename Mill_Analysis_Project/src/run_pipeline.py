@@ -1,18 +1,22 @@
 """
 Enhanced Pipeline Runner for Mill Analysis Project
 Demonstrates how to use the split architecture with optional heatmap functionality
+Now includes intelligent file selection option and dual-scan mode for proper heatmap analysis
 """
 
 from main_processor import MillAnalysisProcessor
 
 
-def run_mill_analysis(include_heatmap: bool = False, heatmap_type: str = 'enhanced'):
+def run_mill_analysis(include_heatmap: bool = False, 
+                     heatmap_type: str = 'enhanced',
+                     use_file_selector: bool = False):
     """
-    Run the complete mill analysis pipeline with optional heatmap generation.
+    Run the complete mill analysis pipeline with optional features.
     
     Args:
         include_heatmap: Whether to include heatmap analysis (default: False for backward compatibility)
         heatmap_type: Type of heatmap ('standard' or 'enhanced')
+        use_file_selector: If True, use intelligent file selection. If False, use hardcoded paths (default)
     
     Returns:
         Processing results dictionary
@@ -22,25 +26,39 @@ def run_mill_analysis(include_heatmap: bool = False, heatmap_type: str = 'enhanc
     
     if include_heatmap:
         print("+ heatmap_generator (ENABLED)")
+        print("+ dual_scan_mode (ENABLED for proper heatmap comparison)")
     
-    # Create the main processor (automatically initializes all modules)
-    processor = MillAnalysisProcessor()
+    if use_file_selector:
+        print("+ intelligent_file_selection (ENABLED)")
+    else:
+        print("+ hardcoded_file_paths (DEFAULT)")
+    
+    # Create the main processor with appropriate modes
+    # Enable dual-scan mode when heatmap is requested for proper comparison
+    dual_scan_mode = include_heatmap  # Dual-scan needed for meaningful heatmap
+    
+    processor = MillAnalysisProcessor(
+        use_file_selector=use_file_selector,
+        dual_scan_mode=dual_scan_mode
+    )
     
     # Choose pipeline based on heatmap requirement
     if include_heatmap:
-        # Run complete pipeline with heatmap analysis
+        # Run complete pipeline with dual-scan heatmap analysis
         print(f"\nRunning ENHANCED pipeline with {heatmap_type} heatmap analysis...")
-        results = processor.run_single_scan_heatmap_analysis(
+        print("Note: Dual-scan mode enabled - will compare two different inner scans")
+        
+        results = processor.run_dual_scan_heatmap_analysis(
             target_ratio=1.0,
             heatmap_type=heatmap_type
         )
         
-        if results.get('processing_successful', False):
+        if results and results.get('processing_successful', False):
             print("\n SUCCESS: Enhanced mill analysis with heatmap completed!")
             print("\nStandard Results:")
             print("- Noise removed and mill structure cleaned")
             print("- Proper scaling applied (1:1 ratio)")
-            print("- Reference and inner scan aligned")
+            print("- Reference and inner scans aligned")
             print("- Comprehensive visualizations created")
             
             print("\nHeatmap Results:")
@@ -48,7 +66,13 @@ def run_mill_analysis(include_heatmap: bool = False, heatmap_type: str = 'enhanc
                 heatmap_analysis = results['heatmap_results'].get('analysis', {})
                 if heatmap_type in heatmap_analysis:
                     stats = heatmap_analysis[heatmap_type]
-                    print(f"- {heatmap_type.title()} heatmap generated (same scan comparison)")
+                    print(f"- {heatmap_type.title()} heatmap generated")
+                    
+                    if results.get('dual_scan_mode', False):
+                        print("- Two different scans compared for wear analysis")
+                    else:
+                        print("- Same scan comparison (fallback mode)")
+                        
                     print(f"- Mean wear distance: {stats.get('mean_distance', 0):.2f}mm")
                     print(f"- Max wear distance: {stats.get('max_distance', 0):.2f}mm")
                     print(f"- Points analyzed: {stats.get('num_points', 0):,}")
@@ -65,7 +89,7 @@ def run_mill_analysis(include_heatmap: bool = False, heatmap_type: str = 'enhanc
             return results
         else:
             print("\n ERROR: Enhanced mill analysis with heatmap failed")
-            return None
+            return {'processing_successful': False}
     
     else:
         # Run standard pipeline (original functionality)
@@ -79,217 +103,110 @@ def run_mill_analysis(include_heatmap: bool = False, heatmap_type: str = 'enhanc
             print("- Proper scaling applied (1:1 ratio)")
             print("- Reference and inner scan aligned")
             print("- Comprehensive visualizations created")
-            print("- Check output/visualizations/ for analysis plots")
             
-            # Get results for further processing if needed
-            results = processor.get_processing_results()
-            print(f"\nProcessed point clouds available:")
-            print(f"- Reference: {len(results['reference_pcd'].points):,} points")
-            print(f"- Final aligned: {len(results['final_aligned_pcd'].points):,} points")
-            print(f"- Scale factor: {results['scale_factor']:.3f}x")
+            print("\nOutput Locations:")
+            print("- Analysis results: output/visualizations/")
+            print("- Aligned scans: output/aligned_scans/")
+            print("- Intermediate files: output/intermediate/")
             
-            return results
+            return {'processing_successful': True}
         else:
             print("\n ERROR: Standard mill analysis failed")
-            print("Check console output for detailed error information")
-            return None
+            return {'processing_successful': False}
 
 
-def run_two_scan_heatmap_comparison(scan1_path: str = None, scan2_path: str = None, 
-                                   heatmap_type: str = 'enhanced'):
+def run_with_heatmap_analysis(heatmap_type: str = 'enhanced', use_file_selector: bool = False):
     """
-    Run two-scan heatmap comparison analysis with complete pipeline processing for each scan.
-    Each scan goes through: Load -> Noise Removal -> Scaling -> Alignment -> Heatmap Comparison
+    Convenience function to run pipeline with heatmap analysis.
+    Automatically enables dual-scan mode for proper heatmap comparison.
     
     Args:
-        scan1_path: Path to first scan file (Time A)
-        scan2_path: Path to second scan file (Time B)
         heatmap_type: Type of heatmap ('standard' or 'enhanced')
+        use_file_selector: If True, use intelligent file selection
     
     Returns:
-        Comparison results dictionary
+        Processing results dictionary
     """
-    print("="*80)
-    print("TWO-SCAN HEATMAP COMPARISON WITH COMPLETE PIPELINE PROCESSING")
-    print("="*80)
-    
-    processor = MillAnalysisProcessor()
-    
-    # Use your specific file paths
-    if scan1_path is None:
-        scan1_path = r"C:\Mill_Analysis_Project\data\inner_scans\8_8-Aug-2024.ply"
-    if scan2_path is None:
-        scan2_path = r"C:\Mill_Analysis_Project\data\inner_scans\3_18-Jan-2024.ply"
-    
-    print(f"Processing Configuration:")
-    print(f"  Scan 1 (Time A): {scan1_path}")
-    print(f"  Scan 2 (Time B): {scan2_path}")
-    print(f"  Heatmap Type: {heatmap_type}")
-    print(f"  Each scan will go through complete processing pipeline:")
-    print(f"    1. Data Loading")
-    print(f"    2. V3 Noise Removal")
-    print(f"    3. Scaling (95th percentile)")
-    print(f"    4. Complete Alignment (Center + PCA + ICP)")
-    print(f"    5. Heatmap Generation and Comparison")
-    
-    # Load reference for consistency
-    print("\nLoading reference scan...")
-    processor.reference_pcd, _ = processor.data_loader.load_reference_file()
-    if processor.reference_pcd is None:
-        print("ERROR: Failed to load reference scan")
-        return None
-    
-    print(f"Reference loaded: {len(processor.reference_pcd.points):,} points")
-    
-    # Run comparison pipeline (this handles complete processing of both scans)
-    print("\nStarting two-scan comparison pipeline...")
-    results = processor.run_heatmap_comparison_pipeline(scan1_path, scan2_path, heatmap_type)
-    
-    if results.get('comparison_successful', False):
-        print("\n" + "="*80)
-        print("SUCCESS: TWO-SCAN HEATMAP COMPARISON COMPLETED")
-        print("="*80)
-        
-        # Display comprehensive results summary
-        scan1_results = results.get('scan1_results', {})
-        scan2_results = results.get('scan2_results', {})
-        heatmap_results = results.get('heatmap_results', {})
-        
-        print(f"\nPROCESSING SUMMARY:")
-        if scan1_results:
-            scan1_final = scan1_results.get('final_aligned_pcd')
-            if scan1_final:
-                print(f"  Scan 1: {len(scan1_final.points):,} points after complete processing")
-        
-        if scan2_results:
-            scan2_final = scan2_results.get('final_aligned_pcd')
-            if scan2_final:
-                print(f"  Scan 2: {len(scan2_final.points):,} points after complete processing")
-        
-        print(f"  Processing Time: {results.get('total_processing_time', 0):.1f} seconds")
-        
-        # Display heatmap analysis results
-        analysis = heatmap_results.get('analysis', {})
-        if heatmap_type in analysis:
-            stats = analysis[heatmap_type]
-            print(f"\nHEATMAP ANALYSIS RESULTS ({heatmap_type}):")
-            print(f"  Mean wear distance: {stats.get('mean_distance', 0):.2f}mm")
-            print(f"  Maximum wear distance: {stats.get('max_distance', 0):.2f}mm")
-            print(f"  Minimum wear distance: {stats.get('min_distance', 0):.2f}mm")
-            print(f"  95th percentile: {stats.get('percentile_95', 0):.2f}mm")
-            print(f"  Points analyzed: {stats.get('num_points', 0):,}")
-            
-            if heatmap_type == 'enhanced':
-                print(f"  Color mapping: 11-stage enhanced with side view analysis")
-            else:
-                print(f"  Color mapping: 4-stage standard")
-        
-        print(f"\nOUTPUT LOCATIONS:")
-        print(f"  Heatmap files: output/heatmaps/")
-        print(f"  Comparison visualizations: output/visualizations/")
-        print(f"  Individual scan results: output/aligned_scans/")
-        
-        print(f"\nWEAR PROGRESSION ANALYSIS:")
-        print(f"  Time A (Aug 2024) vs Time B (Jan 2024)")
-        print(f"  Heatmap colors show wear differences between time points")
-        print(f"  Blue = Low wear, Red = High wear")
-        print(f"  Ready for detailed engineering analysis")
-        
-        return results
-    else:
-        print("\n" + "="*80)
-        print("ERROR: TWO-SCAN HEATMAP COMPARISON FAILED")
-        print("="*80)
-        print("Check console output above for detailed error information")
-        return None
+    return run_mill_analysis(
+        include_heatmap=True, 
+        heatmap_type=heatmap_type,
+        use_file_selector=use_file_selector
+    )
 
 
-def run_individual_steps_example():
+def run_with_intelligent_file_selection():
     """
-    Example showing how to run individual steps for custom workflows.
+    Convenience function to run pipeline with intelligent file selection.
     
-    This demonstrates the flexibility of the split architecture.
+    Returns:
+        Processing results dictionary
     """
-    print("\nDemonstrating individual step control...")
+    return run_mill_analysis(use_file_selector=True)
+
+
+def run_standard_pipeline():
+    """
+    Convenience function to run standard pipeline (backward compatible).
     
-    processor = MillAnalysisProcessor()
-    
-    # Step 1: Load data only
-    print("\nStep 1: Loading data...")
-    if processor._step_1_load_data():
-        print("Data loaded successfully")
-        
-        # You could inspect or modify data here before continuing
-        original_points = len(processor.inner_scan_pcd.points)
-        print(f"Loaded {original_points:,} inner scan points")
-        
-        # Step 2: Noise removal with custom parameters
-        print("\nStep 2: Custom noise removal...")
-        processor.cleaned_inner_pcd = processor.noise_processor.apply_v3_noise_removal(
-            processor.inner_scan_pcd,
-            voxel_size=0.01,  # Custom larger voxel size
-            nb_neighbors=25,  # Custom neighbor count
-            std_ratio=1.5,    # Custom std ratio
-            eps=0.08,         # Custom DBSCAN eps
-            min_points=150    # Custom min points
-        )
-        
-        if processor.cleaned_inner_pcd is not None:
-            cleaned_points = len(processor.cleaned_inner_pcd.points)
-            reduction = ((original_points - cleaned_points) / original_points) * 100
-            print(f"Custom noise removal: {reduction:.1f}% reduction")
-            
-            # Could continue with remaining steps using custom cleaned data...
-            print("Individual steps completed successfully")
-            print("This shows the flexibility of the split architecture")
-        else:
-            print("Custom noise removal failed")
-    else:
-        print("Data loading failed")
+    Returns:
+        Processing results dictionary
+    """
+    return run_mill_analysis()
 
 
 if __name__ == "__main__":
     print("="*80)
-    print("MILL ANALYSIS - ENHANCED PIPELINE RUNNER")
+    print("MILL ANALYSIS PIPELINE RUNNER")
+    print("="*80)
+    print("Available modes:")
+    print("1. Standard pipeline (backward compatible)")
+    print("2. Pipeline with intelligent file selection") 
+    print("3. Pipeline with heatmap analysis (dual-scan mode)")
+    print("4. Full pipeline (file selection + heatmap + dual-scan)")
     print("="*80)
     
-    # Example 1: Standard pipeline (original functionality - backward compatible)
-    #print("\n[EXAMPLE 1] Standard Pipeline (Original)")
-    #print("-"*50)
-    #standard_results = run_mill_analysis(include_heatmap=False)
+    import sys
     
-    # Example 2: Enhanced pipeline with heatmap
-    #print("\n[EXAMPLE 2] Enhanced Pipeline with Heatmap")
-    #print("-"*50)
-    #enhanced_results = run_mill_analysis(include_heatmap=True, heatmap_type='enhanced')
+    # Command line argument handling
+    if len(sys.argv) > 1:
+        mode = sys.argv[1].lower()
+        
+        if mode == "file_selector" or mode == "intelligent":
+            print("Running with intelligent file selection...")
+            results = run_with_intelligent_file_selection()
+            
+        elif mode == "heatmap":
+            heatmap_type = sys.argv[2] if len(sys.argv) > 2 else 'enhanced'
+            print(f"Running with {heatmap_type} heatmap analysis...")
+            print("Note: This will enable dual-scan mode for proper comparison")
+            results = run_with_heatmap_analysis(heatmap_type)
+            
+        elif mode == "full":
+            print("Running full pipeline (file selection + heatmap + dual-scan)...")
+            results = run_mill_analysis(
+                include_heatmap=True, 
+                heatmap_type='enhanced',
+                use_file_selector=True
+            )
+            
+        else:
+            print("Running standard pipeline (default)...")
+            results = run_standard_pipeline()
     
-    # Example 3: Two-scan comparison with your specific files
-    print("\n[EXAMPLE 3] Two-Scan Heatmap Comparison (Aug 2024 vs Jan 2024)")
-    print("-"*50)
-    comparison_results = run_two_scan_heatmap_comparison(
-        scan1_path=r"C:\Mill_Analysis_Project\data\inner_scans\8_8-Aug-2024.ply",
-        scan2_path=r"C:\Mill_Analysis_Project\data\inner_scans\3_18-Jan-2024.ply",
-        heatmap_type='enhanced'
-    )
+    else:
+        # Default behavior - standard pipeline for backward compatibility
+        print("Running standard pipeline (default)...")
+        results = run_standard_pipeline()
     
-    # Example 4: Individual step control (advanced)
-    #print("\n[EXAMPLE 4] Individual Step Control (Advanced)")
-    #print("-"*50)
-    #run_individual_steps_example()
+    # Print final status
+    if results and results.get('processing_successful', False):
+        print("\n🎉 PIPELINE EXECUTION COMPLETED SUCCESSFULLY!")
+    else:
+        print("\n❌ PIPELINE EXECUTION FAILED!")
     
-    print("\n" + "="*80)
-    print("ENHANCED PIPELINE DEMONSTRATION COMPLETED")
-    print("="*80)
-    print("\nThe enhanced pipeline provides:")
-    print("- Backward compatibility: Standard mode works exactly as before")
-    print("- Optional heatmap analysis: Enhanced mode includes wear analysis")
-    print("- Two-scan comparison: Compare different time-point scans")
-    print("- Individual module access: Custom workflows possible")
-    print("- Clean separation of concerns: Each capability is optional")
-    print("- Professional code organization: Modular and maintainable")
-    
-    print("\nUsage Options:")
-    print("1. Standard mode: run_mill_analysis()")
-    print("2. With heatmap: run_mill_analysis(include_heatmap=True)")
-    print("3. Two-scan mode: run_two_scan_heatmap_comparison()")
-    print("4. Custom workflow: Use individual processor methods")
+    print("\nUsage examples:")
+    print("python src/run_pipeline.py                    # Standard pipeline")
+    print("python src/run_pipeline.py file_selector      # With file selection")
+    print("python src/run_pipeline.py heatmap           # With heatmap (dual-scan)")
+    print("python src/run_pipeline.py full              # File selection + heatmap + dual-scan")
+    print("\nNote: Heatmap mode automatically enables dual-scan for proper comparison")

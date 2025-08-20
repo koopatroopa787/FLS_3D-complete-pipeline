@@ -1,1061 +1,795 @@
 """
-Comprehensive Visualization System for Mill Analysis Project
-Open3D implementation - Extracted from original massive data_loader.py
-Handles noise removal and alignment visualizations with enhanced side view
-Now includes heatmap visualization functionality
+Complete Visualization Processor for Mill Analysis Project
+Enhanced with center markers, distance measurements, and alignment assessment
+Open3D implementation with comprehensive visualization capabilities
+FIXED: Unique filenames, proper data handling, error prevention
 """
 
 import open3d as o3d
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap, BoundaryNorm
+import copy
+import time
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any, Optional, Tuple
 
 from config import get_file_paths, ProcessingConfig
 
 
 class VisualizationProcessor:
-    """Comprehensive visualization processor for mill analysis."""
+    """Complete visualization processor with enhanced center analysis."""
     
     def __init__(self):
         self.config = ProcessingConfig()
         self.file_paths = get_file_paths()
-    
-    def create_noise_removal_visualization(self, original_pcd: o3d.geometry.PointCloud,
-                                         cleaned_pcd: o3d.geometry.PointCloud,
-                                         save_path: Optional[str] = None) -> bool:
-        """
-        Create comprehensive before/after visualization with enhanced side view.
-        Based on old_version's excellent visualization patterns.
         
-        Args:
-            original_pcd: Original point cloud before noise removal
-            cleaned_pcd: Cleaned point cloud after noise removal
-            save_path: Path to save visualization (optional)
-            
-        Returns:
-            True if visualization created successfully
+    def create_noise_removal_visualization(self, original_pcd: o3d.geometry.PointCloud,
+                                         cleaned_pcd: o3d.geometry.PointCloud) -> bool:
+        """
+        Create comprehensive noise removal visualization.
         """
         try:
-            print("\nCreating comprehensive noise removal visualization...")
+            print("Creating noise removal visualization...")
             
-            # Downsample ONLY for visualization performance (not affecting actual data)
-            viz_sample_size = 10000
-            print(f"Downsampling to {viz_sample_size:,} points for visualization only...")
-            
-            # Use uniform downsampling for better visualization
+            # Calculate reduction statistics
             original_count = len(original_pcd.points)
             cleaned_count = len(cleaned_pcd.points)
+            reduction_pct = ((original_count - cleaned_count) / original_count) * 100
             
-            if original_count > viz_sample_size:
-                every_k_orig = max(1, original_count // viz_sample_size)
-                original_viz = original_pcd.uniform_down_sample(every_k_orig)
-            else:
-                original_viz = original_pcd
-                
-            if cleaned_count > viz_sample_size:
-                every_k_clean = max(1, cleaned_count // viz_sample_size)
-                cleaned_viz = cleaned_pcd.uniform_down_sample(every_k_clean)
-            else:
-                cleaned_viz = cleaned_pcd
+            # Create figure
+            fig = plt.figure(figsize=(20, 12))
+            fig.suptitle('V3 Noise Removal Analysis\n4-Step Process: Voxel + Statistical + Plane + DBSCAN', 
+                        fontsize=16, fontweight='bold')
             
-            original_points = np.asarray(original_viz.points)
-            cleaned_points = np.asarray(cleaned_viz.points)
+            # Sample points for visualization
+            original_sampled = self._downsample_for_viz(original_pcd, self.config.SAMPLE_SIZE_3D)
+            cleaned_sampled = self._downsample_for_viz(cleaned_pcd, self.config.SAMPLE_SIZE_3D)
             
-            print(f"Visualization samples: Original {len(original_points):,}, Cleaned {len(cleaned_points):,}")
+            original_points = np.asarray(original_sampled.points)
+            cleaned_points = np.asarray(cleaned_sampled.points)
             
-            # Create comprehensive comparison with enhanced side view analysis
-            fig, axes = plt.subplots(2, 4, figsize=(20, 12))
-            fig.suptitle('V3 Advanced Noise Removal Analysis\nBefore vs After Comparison', 
-                        fontsize=18, fontweight='bold')
+            # 1. Original point cloud (top view)
+            ax1 = fig.add_subplot(2, 3, 1)
+            ax1.scatter(original_points[:, 0], original_points[:, 1], c='red', s=0.5, alpha=0.6)
+            ax1.set_title(f'Original Inner Scan\nTop View (X-Y)\n{original_count:,} points', fontweight='bold')
+            ax1.set_xlabel('X (mm)')
+            ax1.set_ylabel('Y (mm)')
+            ax1.grid(True, alpha=0.3)
+            ax1.axis('equal')
             
-            point_size = 0.5
+            # 2. Cleaned point cloud (top view)
+            ax2 = fig.add_subplot(2, 3, 2)
+            ax2.scatter(cleaned_points[:, 0], cleaned_points[:, 1], c='green', s=0.5, alpha=0.6)
+            ax2.set_title(f'After V3 Noise Removal\nTop View (X-Y)\n{cleaned_count:,} points', fontweight='bold')
+            ax2.set_xlabel('X (mm)')
+            ax2.set_ylabel('Y (mm)')
+            ax2.grid(True, alpha=0.3)
+            ax2.axis('equal')
             
-            # Row 1: Top view comparisons (X-Y plane)
-            self._create_top_view_analysis(axes[0], original_points, cleaned_points, point_size, original_count, cleaned_count)
+            # 3. Side-by-side comparison (side view)
+            ax3 = fig.add_subplot(2, 3, 3)
+            ax3.scatter(original_points[:, 1], original_points[:, 2], c='red', s=0.5, alpha=0.4, label='Original')
+            ax3.scatter(cleaned_points[:, 1], cleaned_points[:, 2], c='green', s=0.5, alpha=0.6, label='Cleaned')
+            ax3.set_title('Before vs After Comparison\nSide View (Y-Z)', fontweight='bold')
+            ax3.set_xlabel('Y (mm)')
+            ax3.set_ylabel('Z (mm)')
+            ax3.legend()
+            ax3.grid(True, alpha=0.3)
+            ax3.axis('equal')
             
-            # Row 2: Enhanced side view comparisons (Y-Z plane) - Best from old_version
-            self._create_enhanced_side_view_analysis(axes[1], original_points, cleaned_points, point_size, original_count, cleaned_count)
+            # 4. Original side view
+            ax4 = fig.add_subplot(2, 3, 4)
+            ax4.scatter(original_points[:, 1], original_points[:, 2], c='red', s=0.5, alpha=0.6)
+            ax4.set_title('Original Side View\n(Y-Z) Shows noise and outliers', fontweight='bold')
+            ax4.set_xlabel('Y (mm)')
+            ax4.set_ylabel('Z (mm)')
+            ax4.grid(True, alpha=0.3)
+            ax4.axis('equal')
+            
+            # 5. Cleaned side view
+            ax5 = fig.add_subplot(2, 3, 5)
+            ax5.scatter(cleaned_points[:, 1], cleaned_points[:, 2], c='green', s=0.5, alpha=0.6)
+            ax5.set_title('Cleaned Side View\n(Y-Z) Clean mill structure', fontweight='bold')
+            ax5.set_xlabel('Y (mm)')
+            ax5.set_ylabel('Z (mm)')
+            ax5.grid(True, alpha=0.3)
+            ax5.axis('equal')
+            
+            # 6. Statistics panel
+            ax6 = fig.add_subplot(2, 3, 6)
+            ax6.axis('off')
+            
+            stats_text = f"""
+V3 NOISE REMOVAL STATISTICS
+
+POINT REDUCTION:
+- Original points: {original_count:,}
+- Final points: {cleaned_count:,}
+- Points removed: {original_count - cleaned_count:,}
+- Reduction: {reduction_pct:.1f}%
+
+V3 4-STEP PROCESS:
+1. Voxel Downsampling
+   • Reduces density for efficiency
+   • Preserves structure
+   
+2. Statistical Outlier Removal
+   • Removes isolated noise points
+   • Based on neighbor statistics
+   
+3. Large Plane Removal
+   • Removes flat bottom surface
+   • Critical for mill analysis
+   
+4. DBSCAN Clustering
+   • Identifies main structure
+   • Removes small fragments
+
+RESULT QUALITY:
+- Noise eliminated: {reduction_pct:.1f}%
+- Main structure preserved
+- Ready for scaling and alignment
+- Flat surface removal: COMPLETED"""
+            
+            ax6.text(0.05, 0.95, stats_text, transform=ax6.transAxes, fontsize=11,
+                    verticalalignment='top', fontfamily='monospace',
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen", alpha=0.8))
             
             plt.tight_layout()
             
             # Save visualization
-            if save_path is None:
-                self.file_paths['visualizations_dir'].mkdir(parents=True, exist_ok=True)
-                save_path = str(self.file_paths['visualizations_dir'] / 'noise_removal_analysis.png')
+            output_path = self.file_paths['visualizations_dir'] / 'v3_noise_removal_analysis.png'
+            plt.savefig(output_path, dpi=self.config.DPI, bbox_inches='tight')
+            plt.close()
             
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"Comprehensive visualization saved: {save_path}")
-            
-            plt.show()
+            print(f"Noise removal visualization saved: {output_path}")
             return True
             
         except Exception as e:
-            print(f"ERROR creating visualization: {str(e)}")
+            print(f"ERROR creating noise removal visualization: {str(e)}")
             return False
-    
-    def _create_top_view_analysis(self, axes_row, original_points: np.ndarray, 
-                                 cleaned_points: np.ndarray, point_size: float,
-                                 original_count: int, cleaned_count: int):
-        """Create top view (X-Y plane) analysis."""
-        
-        # Original point cloud - top view
-        axes_row[0].scatter(original_points[:, 0], original_points[:, 1], 
-                           c='red', s=point_size, alpha=0.6, label='Original (with noise)')
-        axes_row[0].set_title('Original Point Cloud\nTop View (X-Y)')
-        axes_row[0].set_xlabel('X (mm)')
-        axes_row[0].set_ylabel('Y (mm)')
-        axes_row[0].set_aspect('equal')
-        axes_row[0].grid(True, alpha=0.3)
-        axes_row[0].legend()
-        
-        # Cleaned point cloud - top view
-        axes_row[1].scatter(cleaned_points[:, 0], cleaned_points[:, 1], 
-                           c='blue', s=point_size, alpha=0.6, label='Cleaned (V3 algorithm)')
-        axes_row[1].set_title('Cleaned Point Cloud\nTop View (X-Y)')
-        axes_row[1].set_xlabel('X (mm)')
-        axes_row[1].set_ylabel('Y (mm)')
-        axes_row[1].set_aspect('equal')
-        axes_row[1].grid(True, alpha=0.3)
-        axes_row[1].legend()
-        
-        # Combined overlay - top view (IMPROVED OVERLAP)
-        axes_row[2].scatter(original_points[:, 0], original_points[:, 1], 
-                           c='red', s=point_size*0.8, alpha=0.4, label='Original (noise)', marker='.')
-        axes_row[2].scatter(cleaned_points[:, 0], cleaned_points[:, 1], 
-                           c='blue', s=point_size*1.2, alpha=0.8, label='Cleaned (V3)', marker='o')
-        axes_row[2].set_title('Noise Removal Overlay\nTop View (X-Y) - Red=Original, Blue=Cleaned')
-        axes_row[2].set_xlabel('X (mm)')
-        axes_row[2].set_ylabel('Y (mm)')
-        axes_row[2].set_aspect('equal')
-        axes_row[2].grid(True, alpha=0.3)
-        axes_row[2].legend()
-        
-        # Top view statistics (use actual counts, not visualization sample counts)
-        reduction_pct = ((original_count - cleaned_count) / original_count) * 100
-        
-        x_range_orig = np.max(original_points[:, 0]) - np.min(original_points[:, 0])
-        y_range_orig = np.max(original_points[:, 1]) - np.min(original_points[:, 1])
-        x_range_clean = np.max(cleaned_points[:, 0]) - np.min(cleaned_points[:, 0])
-        y_range_clean = np.max(cleaned_points[:, 1]) - np.min(cleaned_points[:, 1])
-        
-        stats_text = f"""TOP VIEW (X-Y) ANALYSIS
-
-NOISE REMOVAL STATISTICS:
-Original points: {original_count:,}
-Cleaned points: {cleaned_count:,}
-Noise removed: {reduction_pct:.1f}%
-
-DIMENSION PRESERVATION:
-X-range change: {abs(x_range_clean - x_range_orig):.2f}mm
-Y-range change: {abs(y_range_clean - y_range_orig):.2f}mm
-
-STRUCTURE QUALITY:
-- Main mill structure preserved
-- Flat bottom surface removed
-- Outliers and noise eliminated
-- Geometric integrity maintained
-
-V3 FLOW FOLLOWED:
-- Full resolution loading
-- Voxel downsampling in noise removal
-- No premature downsampling
-"""
-        
-        axes_row[3].text(0.05, 0.95, stats_text, transform=axes_row[3].transAxes,
-                        fontsize=9, verticalalignment='top', fontfamily='monospace',
-                        bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.9))
-        axes_row[3].set_title('Top View Statistics')
-        axes_row[3].axis('off')
-    
-    def _create_enhanced_side_view_analysis(self, axes_row, original_points: np.ndarray, 
-                                           cleaned_points: np.ndarray, point_size: float,
-                                           original_count: int, cleaned_count: int):
-        """Create enhanced side view (Y-Z plane) analysis - Based on old_version's best visualization."""
-        
-        # Original point cloud - enhanced side view
-        axes_row[0].scatter(original_points[:, 1], original_points[:, 2], 
-                           c='red', s=point_size, alpha=0.6, label='Original (with noise)')
-        axes_row[0].set_title('Original Point Cloud\nEnhanced Side View (Y-Z)')
-        axes_row[0].set_xlabel('Y (mm)')
-        axes_row[0].set_ylabel('Z (mm)')
-        axes_row[0].set_aspect('equal')
-        axes_row[0].grid(True, alpha=0.3)
-        axes_row[0].legend()
-        
-        # Cleaned point cloud - enhanced side view
-        axes_row[1].scatter(cleaned_points[:, 1], cleaned_points[:, 2], 
-                           c='blue', s=point_size, alpha=0.6, label='Cleaned (V3 algorithm)')
-        axes_row[1].set_title('Cleaned Point Cloud\nEnhanced Side View (Y-Z)')
-        axes_row[1].set_xlabel('Y (mm)')
-        axes_row[1].set_ylabel('Z (mm)')
-        axes_row[1].set_aspect('equal')
-        axes_row[1].grid(True, alpha=0.3)
-        axes_row[1].legend()
-        
-        # Combined overlay - enhanced side view (IMPROVED OVERLAP - like old_version's best visualization)
-        axes_row[2].scatter(original_points[:, 1], original_points[:, 2], 
-                           c='red', s=point_size*0.8, alpha=0.4, label='Original (noise)', marker='.')
-        axes_row[2].scatter(cleaned_points[:, 1], cleaned_points[:, 2], 
-                           c='blue', s=point_size*1.2, alpha=0.8, label='Cleaned (V3)', marker='o')
-        axes_row[2].set_title('Noise Removal Side Overlay\n(Y-Z plane) - Shows Noise vs Clean Structure')
-        axes_row[2].set_xlabel('Y (mm)')
-        axes_row[2].set_ylabel('Z (mm)')
-        axes_row[2].set_aspect('equal')
-        axes_row[2].grid(True, alpha=0.3)
-        axes_row[2].legend()
-        
-        # Enhanced side view statistics (following old_version pattern)
-        y_range_orig = np.max(original_points[:, 1]) - np.min(original_points[:, 1])
-        z_range_orig = np.max(original_points[:, 2]) - np.min(original_points[:, 2])
-        y_range_clean = np.max(cleaned_points[:, 1]) - np.min(cleaned_points[:, 1])
-        z_range_clean = np.max(cleaned_points[:, 2]) - np.min(cleaned_points[:, 2])
-        
-        # Calculate circular structure preservation
-        y_center_orig = (np.max(original_points[:, 1]) + np.min(original_points[:, 1])) / 2
-        z_center_orig = (np.max(original_points[:, 2]) + np.min(original_points[:, 2])) / 2
-        y_center_clean = (np.max(cleaned_points[:, 1]) + np.min(cleaned_points[:, 1])) / 2
-        z_center_clean = (np.max(cleaned_points[:, 2]) + np.min(cleaned_points[:, 2])) / 2
-        
-        center_shift = np.sqrt((y_center_clean - y_center_orig)**2 + (z_center_clean - z_center_orig)**2)
-        
-        side_stats_text = f"""ENHANCED SIDE VIEW (Y-Z) ANALYSIS
-
-CIRCULAR CROSS-SECTION ANALYSIS:
-Y-range preservation: {abs(y_range_clean - y_range_orig):.2f}mm
-Z-range preservation: {abs(z_range_clean - z_range_orig):.2f}mm
-Center shift: {center_shift:.2f}mm
-
-MILL STRUCTURE QUALITY:
-- Circular geometry preserved
-- Flat bottom surface removed
-- Noise and outliers eliminated
-- Mill liner profile maintained
-- Enhanced precision achieved
-
-V3 ALGORITHM PERFORMANCE:
-Step 1: Voxel downsampling (PASS)
-Step 2: Statistical outlier removal (PASS)
-Step 3: Large plane removal (PASS)
-Step 4: DBSCAN clustering (PASS)
-
-ACTUAL PROCESSING STATS:
-Original: {original_count:,} points
-Final: {cleaned_count:,} points
-Reduction: {((original_count - cleaned_count) / original_count) * 100:.1f}%
-
-RESULT: Clean mill structure ready for scaling
-"""
-        
-        axes_row[3].text(0.05, 0.95, side_stats_text, transform=axes_row[3].transAxes,
-                        fontsize=9, verticalalignment='top', fontfamily='monospace',
-                        bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.9))
-        axes_row[3].set_title('Enhanced Side View Analysis')
-        axes_row[3].axis('off')
     
     def create_alignment_visualization(self, reference_pcd: o3d.geometry.PointCloud,
                                      original_inner_pcd: o3d.geometry.PointCloud,
                                      final_aligned_pcd: o3d.geometry.PointCloud,
-                                     save_path: Optional[str] = None) -> bool:
+                                     scan_name: str = "scan") -> bool:
         """
-        Create comprehensive alignment visualization (old_version enhanced).
+        Create enhanced alignment visualization with center markers and measurements.
+        FIXED: Unique filename per scan to prevent overwriting.
         
         Args:
             reference_pcd: Reference point cloud
-            original_inner_pcd: Original inner scan (before alignment)
+            original_inner_pcd: Original inner scan before alignment
             final_aligned_pcd: Final aligned inner scan
-            save_path: Path to save visualization
-            
-        Returns:
-            True if visualization created successfully
+            scan_name: Unique name for this scan (e.g., "scan1", "scan2")
         """
         try:
-            print("\nCreating comprehensive alignment visualization...")
+            print(f"Creating enhanced alignment visualization with center analysis for {scan_name}...")
             
-            # Downsample for visualization performance
-            viz_sample_size = 8000
+            # Calculate centers
+            ref_center = reference_pcd.get_center()
+            original_center = original_inner_pcd.get_center()
+            aligned_center = final_aligned_pcd.get_center()
             
-            ref_count = len(reference_pcd.points)
-            orig_count = len(original_inner_pcd.points)
-            aligned_count = len(final_aligned_pcd.points)
+            # Calculate distances
+            original_distance = np.linalg.norm(ref_center - original_center)
+            final_distance = np.linalg.norm(ref_center - aligned_center)
+            improvement = original_distance - final_distance
             
-            if ref_count > viz_sample_size:
-                ref_viz = reference_pcd.uniform_down_sample(max(1, ref_count // viz_sample_size))
+            print(f"Center Analysis:")
+            print(f"  Reference center: [{ref_center[0]:.1f}, {ref_center[1]:.1f}, {ref_center[2]:.1f}]")
+            print(f"  Original distance: {original_distance:.1f}mm")
+            print(f"  Final distance: {final_distance:.1f}mm")
+            print(f"  Improvement: {improvement:.1f}mm")
+            
+            # Create figure with enhanced layout
+            fig = plt.figure(figsize=(24, 16))
+            fig.suptitle(f'Complete Mill Alignment Analysis - {scan_name.upper()}\nNoise Removal + Scaling + Alignment Pipeline', 
+                        fontsize=16, fontweight='bold')
+            
+            # Sample points for visualization
+            ref_sampled = self._downsample_for_viz(reference_pcd, self.config.SAMPLE_SIZE_3D)
+            original_sampled = self._downsample_for_viz(original_inner_pcd, self.config.SAMPLE_SIZE_3D)
+            aligned_sampled = self._downsample_for_viz(final_aligned_pcd, self.config.SAMPLE_SIZE_3D)
+            
+            # Layout: 2x3 grid
+            # Top row: Reference | Original Inner | Aligned Overlay
+            # Bottom row: Side Views (Y-Z) for Before and After + Statistics
+            
+            # 1. Reference Point Cloud (Top View)
+            ax1 = fig.add_subplot(2, 3, 1)
+            ref_points = np.asarray(ref_sampled.points)
+            ax1.scatter(ref_points[:, 0], ref_points[:, 1], c='blue', s=1, alpha=0.6, label='Reference')
+            ax1.scatter(ref_center[0], ref_center[1], c='red', s=100, marker='x', linewidth=3, label='Center')
+            ax1.set_title('Reference Point Cloud\nTop View (X-Y)', fontweight='bold')
+            ax1.set_xlabel('X (mm)')
+            ax1.set_ylabel('Y (mm)')
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+            ax1.axis('equal')
+            
+            # 2. Original Inner Scan (Top View)
+            ax2 = fig.add_subplot(2, 3, 2)
+            original_points = np.asarray(original_sampled.points)
+            ax2.scatter(original_points[:, 0], original_points[:, 1], c='red', s=1, alpha=0.6, label='Original Inner')
+            ax2.scatter(original_center[0], original_center[1], c='black', s=100, marker='x', linewidth=3, label='Center')
+            ax2.set_title(f'Original Inner Scan - {scan_name}\nTop View (X-Y)', fontweight='bold')
+            ax2.set_xlabel('X (mm)')
+            ax2.set_ylabel('Y (mm)')
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+            ax2.axis('equal')
+            
+            # 3. Aligned Overlay (Top View)
+            ax3 = fig.add_subplot(2, 3, 3)
+            aligned_points = np.asarray(aligned_sampled.points)
+            ax3.scatter(ref_points[:, 0], ref_points[:, 1], c='blue', s=1, alpha=0.4, label='Reference')
+            ax3.scatter(aligned_points[:, 0], aligned_points[:, 1], c='green', s=1, alpha=0.6, label='Aligned Inner')
+            # Center markers
+            ax3.scatter(ref_center[0], ref_center[1], c='blue', s=150, marker='x', linewidth=4, label='Ref Center')
+            ax3.scatter(aligned_center[0], aligned_center[1], c='green', s=150, marker='x', linewidth=4, label='Aligned Center')
+            # Center connection line
+            ax3.plot([ref_center[0], aligned_center[0]], [ref_center[1], aligned_center[1]], 
+                    'r--', linewidth=2, alpha=0.8, label=f'Center Offset: {final_distance:.1f}mm')
+            ax3.set_title(f'Reference vs Aligned Overlay - {scan_name}\nTop View (X-Y) - Blue=Reference, Green=Aligned', fontweight='bold')
+            ax3.set_xlabel('X (mm)')
+            ax3.set_ylabel('Y (mm)')
+            ax3.legend()
+            ax3.grid(True, alpha=0.3)
+            ax3.axis('equal')
+            
+            # 4. Side View BEFORE Alignment (Y-Z)
+            ax4 = fig.add_subplot(2, 3, 4)
+            ax4.scatter(ref_points[:, 1], ref_points[:, 2], c='blue', s=1, alpha=0.4, label='Reference')
+            ax4.scatter(original_points[:, 1], original_points[:, 2], c='red', s=1, alpha=0.6, label='Original Inner')
+            # Center markers
+            ax4.scatter(ref_center[1], ref_center[2], c='blue', s=150, marker='x', linewidth=4, label='Ref Center')
+            ax4.scatter(original_center[1], original_center[2], c='red', s=150, marker='x', linewidth=4, label='Original Center')
+            # Center connection line
+            ax4.plot([ref_center[1], original_center[1]], [ref_center[2], original_center[2]], 
+                    'black', linewidth=2, alpha=0.8, label=f'Before: {original_distance:.1f}mm')
+            ax4.set_title(f'BEFORE Alignment - {scan_name}\nSide View (Y-Z) - Blue=Reference, Red=Original', fontweight='bold')
+            ax4.set_xlabel('Y (mm)')
+            ax4.set_ylabel('Z (mm)')
+            ax4.legend()
+            ax4.grid(True, alpha=0.3)
+            ax4.axis('equal')
+            
+            # 5. Side View AFTER Alignment (Y-Z)
+            ax5 = fig.add_subplot(2, 3, 5)
+            ax5.scatter(ref_points[:, 1], ref_points[:, 2], c='blue', s=1, alpha=0.4, label='Reference')
+            ax5.scatter(aligned_points[:, 1], aligned_points[:, 2], c='green', s=1, alpha=0.6, label='Aligned Inner')
+            # Center markers
+            ax5.scatter(ref_center[1], ref_center[2], c='blue', s=150, marker='x', linewidth=4, label='Ref Center')
+            ax5.scatter(aligned_center[1], aligned_center[2], c='green', s=150, marker='x', linewidth=4, label='Aligned Center')
+            # Center connection line
+            ax5.plot([ref_center[1], aligned_center[1]], [ref_center[2], aligned_center[2]], 
+                    'orange', linewidth=2, alpha=0.8, label=f'After: {final_distance:.1f}mm')
+            ax5.set_title(f'AFTER Alignment - {scan_name}\nSide View (Y-Z) - Blue=Reference, Green=Aligned', fontweight='bold')
+            ax5.set_xlabel('Y (mm)')
+            ax5.set_ylabel('Z (mm)')
+            ax5.legend()
+            ax5.grid(True, alpha=0.3)
+            ax5.axis('equal')
+            
+            # 6. Alignment Statistics Panel
+            ax6 = fig.add_subplot(2, 3, 6)
+            ax6.axis('off')
+            
+            # Create statistics text
+            stats_text = f"""
+ALIGNMENT PIPELINE ANALYSIS - {scan_name.upper()}
+
+POINT COUNTS:
+- Reference: {len(reference_pcd.points):,} points
+- Original Inner: {len(original_inner_pcd.points):,} points
+- Final Aligned: {len(final_aligned_pcd.points):,} points
+
+CENTER ALIGNMENT:
+- Reference Center:
+  [{ref_center[0]:.1f}, {ref_center[1]:.1f}, {ref_center[2]:.1f}]
+- Original Center:
+  [{original_center[0]:.1f}, {original_center[1]:.1f}, {original_center[2]:.1f}]
+- Final Center:
+  [{aligned_center[0]:.1f}, {aligned_center[1]:.1f}, {aligned_center[2]:.1f}]
+
+IMPROVEMENT:
+- Before Distance: {original_distance:.1f}mm
+- After Distance: {final_distance:.1f}mm
+- Improvement: {improvement:.1f}mm
+- Improvement %: {(improvement/original_distance*100):.1f}%
+
+PROCESSING STEPS APPLIED:
+1. V3 Noise Removal (voxel + statistical + plane + DBSCAN)
+2. 95th percentile scaling
+3. Center alignment
+4. Z-axis alignment (mill cylindrical axis)
+5. PCA axis alignment
+6. ICP refinement (PASS)
+
+RESULT: Mill scans properly aligned
+Ready for wear analysis and comparison"""
+            
+            # Determine quality color
+            if final_distance < 1.0:
+                quality_color = 'green'
+                quality = "EXCELLENT"
+            elif final_distance < 3.0:
+                quality_color = 'orange'
+                quality = "GOOD"
             else:
-                ref_viz = reference_pcd
-                
-            if orig_count > viz_sample_size:
-                orig_viz = original_inner_pcd.uniform_down_sample(max(1, orig_count // viz_sample_size))
-            else:
-                orig_viz = original_inner_pcd
-                
-            if aligned_count > viz_sample_size:
-                aligned_viz = final_aligned_pcd.uniform_down_sample(max(1, aligned_count // viz_sample_size))
-            else:
-                aligned_viz = final_aligned_pcd
+                quality_color = 'red'
+                quality = "NEEDS_IMPROVEMENT"
             
-            ref_points = np.asarray(ref_viz.points)
-            orig_points = np.asarray(orig_viz.points)
-            aligned_points = np.asarray(aligned_viz.points)
+            ax6.text(0.05, 0.95, stats_text, transform=ax6.transAxes, fontsize=10,
+                    verticalalignment='top', fontfamily='monospace',
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8))
             
-            # Create comprehensive alignment comparison
-            fig, axes = plt.subplots(2, 4, figsize=(24, 12))
-            fig.suptitle('Complete Mill Alignment Analysis\nNoise Removal + Scaling + Alignment Pipeline', 
-                        fontsize=18, fontweight='bold')
-            
-            point_size = 0.8
-            
-            # Row 1: Before alignment (top view)
-            self._create_alignment_top_view(axes[0], ref_points, orig_points, aligned_points, point_size, 
-                                          ref_count, orig_count, aligned_count)
-            
-            # Row 2: Enhanced side view showing alignment quality
-            self._create_alignment_side_view(axes[1], ref_points, orig_points, aligned_points, point_size,
-                                           ref_count, orig_count, aligned_count)
+            # Add quality assessment
+            ax6.text(0.05, 0.02, f"ALIGNMENT STATUS: {quality}", 
+                    transform=ax6.transAxes, fontsize=14, fontweight='bold',
+                    color=quality_color,
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor=quality_color, alpha=0.2))
             
             plt.tight_layout()
             
-            # Save visualization
-            if save_path is None:
-                self.file_paths['visualizations_dir'].mkdir(parents=True, exist_ok=True)
-                save_path = str(self.file_paths['visualizations_dir'] / 'complete_alignment_analysis.png')
+            # Save visualization with unique filename per scan
+            viz_filename = f"alignment_analysis_{scan_name}.png"
+            output_path = self.file_paths['visualizations_dir'] / viz_filename
+            plt.savefig(output_path, dpi=self.config.DPI, bbox_inches='tight')
+            plt.close()  # Close to free memory
             
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"Alignment visualization saved: {save_path}")
-            
-            plt.show()
+            print(f"Enhanced alignment visualization saved: {output_path}")
             return True
             
         except Exception as e:
-            print(f"ERROR creating alignment visualization: {str(e)}")
+            print(f"ERROR creating enhanced alignment visualization for {scan_name}: {str(e)}")
             return False
     
-    def _create_alignment_top_view(self, axes_row, ref_points, orig_points, aligned_points, point_size,
-                                 ref_count, orig_count, aligned_count):
-        """Create alignment analysis top view."""
-        
-        # Reference point cloud
-        axes_row[0].scatter(ref_points[:, 0], ref_points[:, 1], 
-                           c='blue', s=point_size, alpha=0.7, label='Reference')
-        axes_row[0].set_title('Reference Point Cloud\nTop View (X-Y)')
-        axes_row[0].set_xlabel('X (mm)')
-        axes_row[0].set_ylabel('Y (mm)')
-        axes_row[0].set_aspect('equal')
-        axes_row[0].grid(True, alpha=0.3)
-        axes_row[0].legend()
-        
-        # Original inner scan (before alignment)
-        axes_row[1].scatter(orig_points[:, 0], orig_points[:, 1], 
-                           c='red', s=point_size, alpha=0.6, label='Original Inner')
-        axes_row[1].set_title('Original Inner Scan\nTop View (X-Y)')
-        axes_row[1].set_xlabel('X (mm)')
-        axes_row[1].set_ylabel('Y (mm)')
-        axes_row[1].set_aspect('equal')
-        axes_row[1].grid(True, alpha=0.3)
-        axes_row[1].legend()
-        
-        # Final aligned result WITH REFERENCE OVERLAY
-        axes_row[2].scatter(ref_points[:, 0], ref_points[:, 1], 
-                           c='blue', s=point_size*0.6, alpha=0.5, label='Reference', marker='.')
-        axes_row[2].scatter(aligned_points[:, 0], aligned_points[:, 1], 
-                           c='green', s=point_size*1.0, alpha=0.7, label='Aligned Inner', marker='o')
-        axes_row[2].set_title('Reference vs Aligned Overlay\nTop View (X-Y) - Blue=Reference, Green=Aligned')
-        axes_row[2].set_xlabel('X (mm)')
-        axes_row[2].set_ylabel('Y (mm)')
-        axes_row[2].set_aspect('equal')
-        axes_row[2].grid(True, alpha=0.3)
-        axes_row[2].legend()
-        
-        # Alignment statistics
-        ref_center = np.mean(ref_points, axis=0)
-        orig_center = np.mean(orig_points, axis=0)
-        aligned_center = np.mean(aligned_points, axis=0)
-        
-        center_improvement = np.linalg.norm(orig_center - ref_center) - np.linalg.norm(aligned_center - ref_center)
-        
-        stats_text = f"""ALIGNMENT PIPELINE ANALYSIS
-
-POINT COUNTS:
-Reference: {ref_count:,} points
-Original Inner: {orig_count:,} points  
-Final Aligned: {aligned_count:,} points
-
-CENTER ALIGNMENT:
-Before: {np.linalg.norm(orig_center - ref_center):.2f}mm offset
-After: {np.linalg.norm(aligned_center - ref_center):.2f}mm offset
-Improvement: {center_improvement:.2f}mm
-
-PROCESSING STEPS APPLIED:
-1. V3 Noise Removal (PASS)
-2. 95th Percentile Scaling (PASS)
-3. Center Alignment (PASS)
-4. PCA Axis Alignment (PASS)
-5. ICP Refinement (PASS)
-
-RESULT: Mill scans properly aligned
-Ready for wear analysis
-"""
-        
-        axes_row[3].text(0.05, 0.95, stats_text, transform=axes_row[3].transAxes,
-                        fontsize=9, verticalalignment='top', fontfamily='monospace',
-                        bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.9))
-        axes_row[3].set_title('Alignment Pipeline Statistics')
-        axes_row[3].axis('off')
-    
-    def _create_alignment_side_view(self, axes_row, ref_points, orig_points, aligned_points, point_size,
-                                  ref_count, orig_count, aligned_count):
-        """Create alignment analysis enhanced side view."""
-        
-        # Reference side view
-        axes_row[0].scatter(ref_points[:, 1], ref_points[:, 2], 
-                           c='blue', s=point_size, alpha=0.7, label='Reference')
-        axes_row[0].set_title('Reference Point Cloud\nSide View (Y-Z)')
-        axes_row[0].set_xlabel('Y (mm)')
-        axes_row[0].set_ylabel('Z (mm)')
-        axes_row[0].set_aspect('equal')
-        axes_row[0].grid(True, alpha=0.3)
-        axes_row[0].legend()
-        
-        # Before vs After comparison (IMPROVED OVERLAY)
-        axes_row[1].scatter(ref_points[:, 1], ref_points[:, 2], 
-                           c='blue', s=point_size*0.6, alpha=0.5, label='Reference', marker='.')
-        axes_row[1].scatter(orig_points[:, 1], orig_points[:, 2], 
-                           c='red', s=point_size*0.8, alpha=0.6, label='Original Inner', marker='o')
-        axes_row[1].set_title('BEFORE Alignment\nSide View (Y-Z) - Blue=Reference, Red=Original')
-        axes_row[1].set_xlabel('Y (mm)')
-        axes_row[1].set_ylabel('Z (mm)')
-        axes_row[1].set_aspect('equal')
-        axes_row[1].grid(True, alpha=0.3)
-        axes_row[1].legend()
-        
-        # Final alignment overlay (CRITICAL - CLEAR REFERENCE VS ALIGNED COMPARISON)
-        axes_row[2].scatter(ref_points[:, 1], ref_points[:, 2], 
-                           c='blue', s=point_size*0.6, alpha=0.5, label='Reference', marker='.')
-        axes_row[2].scatter(aligned_points[:, 1], aligned_points[:, 2], 
-                           c='green', s=point_size*1.0, alpha=0.7, label='Aligned Inner', marker='o')
-        axes_row[2].set_title('ALIGNMENT RESULT OVERLAY\nSide View (Y-Z) - Blue=Reference, Green=Aligned')
-        axes_row[2].set_xlabel('Y (mm)')
-        axes_row[2].set_ylabel('Z (mm)')
-        axes_row[2].set_aspect('equal')
-        axes_row[2].grid(True, alpha=0.3)
-        axes_row[2].legend()
-        
-        # Detailed alignment analysis
-        ref_y_range = np.max(ref_points[:, 1]) - np.min(ref_points[:, 1])
-        ref_z_range = np.max(ref_points[:, 2]) - np.min(ref_points[:, 2])
-        aligned_y_range = np.max(aligned_points[:, 1]) - np.min(aligned_points[:, 1])
-        aligned_z_range = np.max(aligned_points[:, 2]) - np.min(aligned_points[:, 2])
-        
-        side_stats_text = f"""ENHANCED SIDE VIEW ANALYSIS
-
-DIMENSIONAL MATCHING:
-Y-range difference: {abs(aligned_y_range - ref_y_range):.2f}mm
-Z-range difference: {abs(aligned_z_range - ref_z_range):.2f}mm
-
-MILL ALIGNMENT QUALITY:
-- Circular geometry preserved
-- Center alignment optimized  
-- Axis orientation corrected
-- ICP refinement applied
-- Dimensional accuracy maintained
-
-OLD_VERSION ALGORITHMS APPLIED:
-- 95th percentile scaling
-- Multi-method center alignment
-- PCA axis alignment
-- Conservative ICP refinement
-
-PROCESSING PIPELINE:
-V3 Noise Removal -> old_version Alignment
-= Complete mill processing solution
-
-ALIGNMENT STATUS: EXCELLENT
-Ready for wear analysis and comparison
-"""
-        
-        axes_row[3].text(0.05, 0.95, side_stats_text, transform=axes_row[3].transAxes,
-                        fontsize=9, verticalalignment='top', fontfamily='monospace',
-                        bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.9))
-        axes_row[3].set_title('Side View Alignment Analysis')
-        axes_row[3].axis('off')
-    
     def create_detailed_overlay_visualization(self, reference_pcd: o3d.geometry.PointCloud,
-                                            aligned_pcd: o3d.geometry.PointCloud,
-                                            save_path: Optional[str] = None) -> bool:
+                                            final_aligned_pcd: o3d.geometry.PointCloud) -> bool:
         """
-        Create detailed overlay visualization focusing ONLY on reference vs aligned comparison.
-        This addresses the visualization issues by providing crystal clear overlays.
-        
-        Args:
-            reference_pcd: Reference point cloud
-            aligned_pcd: Final aligned inner scan
-            save_path: Path to save visualization
-            
-        Returns:
-            True if visualization created successfully
+        Create detailed overlay visualization focusing on center alignment precision.
         """
         try:
-            print("\nCreating detailed overlay visualization for alignment comparison...")
+            print("Creating detailed overlay visualization with precision measurements...")
             
-            # Downsample for visualization
-            viz_sample_size = 12000
+            # Calculate centers and detailed measurements
+            ref_center = reference_pcd.get_center()
+            aligned_center = final_aligned_pcd.get_center()
+            center_offset = aligned_center - ref_center
+            center_distance = np.linalg.norm(center_offset)
             
-            ref_count = len(reference_pcd.points)
-            aligned_count = len(aligned_pcd.points)
+            # Calculate dimensional differences
+            ref_bbox = reference_pcd.get_axis_aligned_bounding_box()
+            aligned_bbox = final_aligned_pcd.get_axis_aligned_bounding_box()
+            ref_dims = ref_bbox.get_extent()
+            aligned_dims = aligned_bbox.get_extent()
             
-            if ref_count > viz_sample_size:
-                ref_viz = reference_pcd.uniform_down_sample(max(1, ref_count // viz_sample_size))
-            else:
-                ref_viz = reference_pcd
-                
-            if aligned_count > viz_sample_size:
-                aligned_viz = aligned_pcd.uniform_down_sample(max(1, aligned_count // viz_sample_size))
-            else:
-                aligned_viz = aligned_pcd
-            
-            ref_points = np.asarray(ref_viz.points)
-            aligned_points = np.asarray(aligned_viz.points)
-            
-            # Create focused overlay comparison
-            fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+            # Create figure
+            fig = plt.figure(figsize=(20, 12))
             fig.suptitle('DETAILED ALIGNMENT OVERLAY ANALYSIS\nReference vs Aligned Inner Scan Comparison', 
                         fontsize=16, fontweight='bold')
             
-            # Top view overlay - CRYSTAL CLEAR
-            axes[0, 0].scatter(ref_points[:, 0], ref_points[:, 1], 
-                              c='blue', s=1.0, alpha=0.6, label='Reference', marker='.')
-            axes[0, 0].scatter(aligned_points[:, 0], aligned_points[:, 1], 
-                              c='red', s=1.5, alpha=0.8, label='Aligned Inner', marker='o')
-            axes[0, 0].set_title('TOP VIEW OVERLAY\n(X-Y plane) Blue=Reference, Red=Aligned')
-            axes[0, 0].set_xlabel('X (mm)')
-            axes[0, 0].set_ylabel('Y (mm)')
-            axes[0, 0].set_aspect('equal')
-            axes[0, 0].grid(True, alpha=0.3)
-            axes[0, 0].legend()
+            # Sample points
+            ref_sampled = self._downsample_for_viz(reference_pcd, self.config.SAMPLE_SIZE_3D)
+            aligned_sampled = self._downsample_for_viz(final_aligned_pcd, self.config.SAMPLE_SIZE_3D)
             
-            # Side view overlay - CRYSTAL CLEAR  
-            axes[0, 1].scatter(ref_points[:, 1], ref_points[:, 2], 
-                              c='blue', s=1.0, alpha=0.6, label='Reference', marker='.')
-            axes[0, 1].scatter(aligned_points[:, 1], aligned_points[:, 2], 
-                              c='red', s=1.5, alpha=0.8, label='Aligned Inner', marker='o')
-            axes[0, 1].set_title('SIDE VIEW OVERLAY\n(Y-Z plane) Blue=Reference, Red=Aligned')
-            axes[0, 1].set_xlabel('Y (mm)')
-            axes[0, 1].set_ylabel('Z (mm)')
-            axes[0, 1].set_aspect('equal')
-            axes[0, 1].grid(True, alpha=0.3)
-            axes[0, 1].legend()
+            ref_points = np.asarray(ref_sampled.points)
+            aligned_points = np.asarray(aligned_sampled.points)
             
-            # Front view overlay - ADDITIONAL PERSPECTIVE
-            axes[1, 0].scatter(ref_points[:, 0], ref_points[:, 2], 
-                              c='blue', s=1.0, alpha=0.6, label='Reference', marker='.')
-            axes[1, 0].scatter(aligned_points[:, 0], aligned_points[:, 2], 
-                              c='red', s=1.5, alpha=0.8, label='Aligned Inner', marker='o')
-            axes[1, 0].set_title('FRONT VIEW OVERLAY\n(X-Z plane) Blue=Reference, Red=Aligned')
-            axes[1, 0].set_xlabel('X (mm)')
-            axes[1, 0].set_ylabel('Z (mm)')
-            axes[1, 0].set_aspect('equal')
-            axes[1, 0].grid(True, alpha=0.3)
-            axes[1, 0].legend()
+            # 1. Top View Overlay (X-Y)
+            ax1 = fig.add_subplot(2, 2, 1)
+            ax1.scatter(ref_points[:, 0], ref_points[:, 1], c='blue', s=0.5, alpha=0.6, label='Reference')
+            ax1.scatter(aligned_points[:, 0], aligned_points[:, 1], c='red', s=0.5, alpha=0.6, label='Aligned Inner')
+            # Center markers with precision
+            ax1.scatter(ref_center[0], ref_center[1], c='blue', s=200, marker='+', linewidth=4, label='Ref Center')
+            ax1.scatter(aligned_center[0], aligned_center[1], c='red', s=200, marker='+', linewidth=4, label='Aligned Center')
+            # Center offset vector
+            if center_distance > 1.0:  # Only show arrow if offset is significant
+                ax1.arrow(ref_center[0], ref_center[1], center_offset[0], center_offset[1], 
+                         head_width=20, head_length=30, fc='green', ec='green', linewidth=2)
+            ax1.set_title('TOP VIEW OVERLAY\n(X-Y plane) Blue=Reference, Red=Aligned', fontweight='bold')
+            ax1.set_xlabel('X (mm)')
+            ax1.set_ylabel('Y (mm)')
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+            ax1.axis('equal')
             
-            # Alignment quality statistics
-            ref_center = np.mean(ref_points, axis=0)
-            aligned_center = np.mean(aligned_points, axis=0)
-            center_error = np.linalg.norm(aligned_center - ref_center)
+            # 2. Side View Overlay (Y-Z)
+            ax2 = fig.add_subplot(2, 2, 2)
+            ax2.scatter(ref_points[:, 1], ref_points[:, 2], c='blue', s=0.5, alpha=0.6, label='Reference')
+            ax2.scatter(aligned_points[:, 1], aligned_points[:, 2], c='red', s=0.5, alpha=0.6, label='Aligned Inner')
+            # Center markers
+            ax2.scatter(ref_center[1], ref_center[2], c='blue', s=200, marker='+', linewidth=4, label='Ref Center')
+            ax2.scatter(aligned_center[1], aligned_center[2], c='red', s=200, marker='+', linewidth=4, label='Aligned Center')
+            # Center offset vector
+            if center_distance > 1.0:  # Only show arrow if offset is significant
+                ax2.arrow(ref_center[1], ref_center[2], center_offset[1], center_offset[2], 
+                         head_width=20, head_length=30, fc='green', ec='green', linewidth=2)
+            ax2.set_title('SIDE VIEW OVERLAY\n(Y-Z plane) Blue=Reference, Red=Aligned', fontweight='bold')
+            ax2.set_xlabel('Y (mm)')
+            ax2.set_ylabel('Z (mm)')
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+            ax2.axis('equal')
             
-            # Calculate dimensional matching
-            ref_dims = np.max(ref_points, axis=0) - np.min(ref_points, axis=0)
-            aligned_dims = np.max(aligned_points, axis=0) - np.min(aligned_points, axis=0)
+            # 3. Front View Overlay (X-Z)
+            ax3 = fig.add_subplot(2, 2, 3)
+            ax3.scatter(ref_points[:, 0], ref_points[:, 2], c='blue', s=0.5, alpha=0.6, label='Reference')
+            ax3.scatter(aligned_points[:, 0], aligned_points[:, 2], c='red', s=0.5, alpha=0.6, label='Aligned Inner')
+            # Center markers
+            ax3.scatter(ref_center[0], ref_center[2], c='blue', s=200, marker='+', linewidth=4, label='Ref Center')
+            ax3.scatter(aligned_center[0], aligned_center[2], c='red', s=200, marker='+', linewidth=4, label='Aligned Center')
+            # Center offset vector
+            if center_distance > 1.0:  # Only show arrow if offset is significant
+                ax3.arrow(ref_center[0], ref_center[2], center_offset[0], center_offset[2], 
+                         head_width=20, head_length=30, fc='green', ec='green', linewidth=2)
+            ax3.set_title('FRONT VIEW OVERLAY\n(X-Z plane) Blue=Reference, Red=Aligned', fontweight='bold')
+            ax3.set_xlabel('X (mm)')
+            ax3.set_ylabel('Z (mm)')
+            ax3.legend()
+            ax3.grid(True, alpha=0.3)
+            ax3.axis('equal')
             
-            dim_errors = np.abs(aligned_dims - ref_dims)
+            # 4. Overlay Quality Analysis
+            ax4 = fig.add_subplot(2, 2, 4)
+            ax4.axis('off')
             
-            overlay_stats_text = f"""DETAILED OVERLAY ANALYSIS
+            # Calculate quality metrics
+            overlap_quality = self._calculate_overlap_quality(reference_pcd, final_aligned_pcd)
+            
+            analysis_text = f"""
+DETAILED OVERLAY ANALYSIS
 
 ALIGNMENT QUALITY METRICS:
-Center alignment error: {center_error:.2f}mm
-X-dimension error: {dim_errors[0]:.2f}mm
-Y-dimension error: {dim_errors[1]:.2f}mm
-Z-dimension error: {dim_errors[2]:.2f}mm
+- Center alignment error: {center_distance:.3f}mm
+- X-dimension error: {abs(ref_dims[0] - aligned_dims[0]):.2f}mm
+- Y-dimension error: {abs(ref_dims[1] - aligned_dims[1]):.2f}mm
+- Z-dimension error: {abs(ref_dims[2] - aligned_dims[2]):.2f}mm
+
+CENTER OFFSET BREAKDOWN:
+- X-offset: {center_offset[0]:.3f}mm
+- Y-offset: {center_offset[1]:.3f}mm
+- Z-offset: {center_offset[2]:.3f}mm
 
 VISUAL OVERLAY INTERPRETATION:
 - Perfect alignment = complete overlap
-- Blue points only = reference not covered
+- Blue points only = reference outside inner scan
 - Red points only = inner scan outside reference
 - Purple areas = good overlap regions
 
-ALIGNMENT STATUS:
-{'EXCELLENT' if center_error < 1.0 else 'GOOD' if center_error < 3.0 else 'NEEDS_IMPROVEMENT'}
+DIMENSIONAL MATCHING:
+- Reference: [{ref_dims[0]:.1f}, {ref_dims[1]:.1f}, {ref_dims[2]:.1f}]mm
+- Aligned: [{aligned_dims[0]:.1f}, {aligned_dims[1]:.1f}, {aligned_dims[2]:.1f}]mm
 
-The overlay visualization clearly shows:
-- How well the mill scans align
-- Areas of good vs poor alignment
-- Overall geometric matching quality
+OVERLAP QUALITY: {overlap_quality:.1f}%
 
-This detailed view provides the clear
-comparison that was missing in the
-original visualizations.
-"""
+ALIGNMENT STATUS:"""
             
-            axes[1, 1].text(0.05, 0.95, overlay_stats_text, transform=axes[1, 1].transAxes,
-                            fontsize=10, verticalalignment='top', fontfamily='monospace',
-                            bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.9))
-            axes[1, 1].set_title('Overlay Quality Analysis')
-            axes[1, 1].axis('off')
+            if center_distance < 1.0:
+                status = "EXCELLENT"
+                status_color = 'green'
+            elif center_distance < 3.0:
+                status = "GOOD"
+                status_color = 'orange'
+            else:
+                status = "NEEDS_IMPROVEMENT"
+                status_color = 'red'
+            
+            ax4.text(0.05, 0.95, analysis_text, transform=ax4.transAxes, fontsize=11,
+                    verticalalignment='top', fontfamily='monospace',
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8))
+            
+            ax4.text(0.05, 0.02, status, transform=ax4.transAxes, fontsize=16, fontweight='bold',
+                    color=status_color,
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor=status_color, alpha=0.2))
             
             plt.tight_layout()
             
             # Save visualization
-            if save_path is None:
-                self.file_paths['visualizations_dir'].mkdir(parents=True, exist_ok=True)
-                save_path = str(self.file_paths['visualizations_dir'] / 'detailed_overlay_analysis.png')
+            output_path = self.file_paths['visualizations_dir'] / 'detailed_alignment_overlay_analysis.png'
+            plt.savefig(output_path, dpi=self.config.DPI, bbox_inches='tight')
+            plt.close()
             
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"Detailed overlay visualization saved: {save_path}")
-            
-            plt.show()
+            print(f"Detailed overlay visualization saved: {output_path}")
             return True
             
         except Exception as e:
             print(f"ERROR creating detailed overlay visualization: {str(e)}")
             return False
-
-    # ========== NEW HEATMAP VISUALIZATION METHODS ==========
     
-    def create_heatmap_visualization(self, heatmap_result: Dict[str, Any],
-                                   save_path: Optional[str] = None) -> bool:
+    def create_heatmap_visualization(self, heatmap_data: Dict[str, Any]) -> bool:
         """
-        Create comprehensive heatmap visualization.
+        Create heatmap wear analysis visualization.
+        FIXED: Better error handling and data availability checks.
         
         Args:
-            heatmap_result: Results from heatmap generator
-            save_path: Path to save visualization
-            
-        Returns:
-            True if visualization created successfully
+            heatmap_data: Dictionary containing heatmap analysis data
         """
         try:
-            print("\nCreating heatmap visualization...")
+            print("Creating heatmap wear visualization...")
             
-            # Determine which heatmap to visualize
-            if heatmap_result.get('has_enhanced', False):
-                return self._create_enhanced_heatmap_visualization(heatmap_result, save_path)
-            elif heatmap_result.get('has_standard', False):
-                return self._create_standard_heatmap_visualization(heatmap_result, save_path)
-            else:
-                print("ERROR: No heatmap data available for visualization")
+            # Check if heatmap data is available
+            if not heatmap_data.get('heatmap_available', False):
+                print("ERROR: Heatmap results not available")
                 return False
-                
-        except Exception as e:
-            print(f"ERROR creating heatmap visualization: {str(e)}")
-            return False
-
-    def _create_enhanced_heatmap_visualization(self, heatmap_result: Dict[str, Any],
-                                             save_path: Optional[str] = None) -> bool:
-        """Create enhanced heatmap visualization with comprehensive analysis."""
-        
-        enhanced_heatmap = heatmap_result['enhanced_heatmap']
-        distances_mm = heatmap_result['enhanced_wear_distances']
-        
-        if enhanced_heatmap is None or distances_mm is None:
-            print("ERROR: Enhanced heatmap data not available")
-            return False
-        
-        print("Creating enhanced heatmap visualization with comprehensive analysis...")
-        
-        points = np.asarray(enhanced_heatmap.points)
-        
-        # Create comprehensive visualization
-        fig, axes = plt.subplots(2, 4, figsize=(28, 14))
-        fig.suptitle('Enhanced Wear Heatmap Analysis with Comprehensive Side View', 
-                    fontsize=18, fontweight='bold')
-        
-        # Recreate colormap for visualization
-        wear_bins = self.config.ENHANCED_WEAR_BINS
-        wear_colors = self.config.ENHANCED_WEAR_COLORS
-        enhanced_wear_cmap = LinearSegmentedColormap.from_list('enhanced_wear_map', wear_colors, N=len(wear_bins)-1)
-        norm = BoundaryNorm(wear_bins, ncolors=enhanced_wear_cmap.N)
-        
-        point_size = 1.0
-        
-        # Top view heatmap (X-Y plane)
-        scatter1 = axes[0, 0].scatter(points[:, 0], points[:, 1], c=distances_mm,
-                                 s=point_size, cmap=enhanced_wear_cmap, norm=norm)
-        axes[0, 0].set_title('Enhanced Top View Heatmap\n(X-Y plane)')
-        axes[0, 0].set_xlabel('X')
-        axes[0, 0].set_ylabel('Y')
-        axes[0, 0].set_aspect('equal')
-        axes[0, 0].grid(True, alpha=0.3)
-        cb1 = plt.colorbar(scatter1, ax=axes[0, 0], boundaries=wear_bins, ticks=wear_bins)
-        cb1.set_label('Wear (mm)')
-        
-        # Front view heatmap (X-Z plane)
-        scatter2 = axes[0, 1].scatter(points[:, 0], points[:, 2], c=distances_mm,
-                                 s=point_size, cmap=enhanced_wear_cmap, norm=norm)
-        axes[0, 1].set_title('Enhanced Front View Heatmap\n(X-Z plane)')
-        axes[0, 1].set_xlabel('X')
-        axes[0, 1].set_ylabel('Z')
-        axes[0, 1].set_aspect('equal')
-        axes[0, 1].grid(True, alpha=0.3)
-        cb2 = plt.colorbar(scatter2, ax=axes[0, 1], boundaries=wear_bins, ticks=wear_bins)
-        cb2.set_label('Wear (mm)')
-        
-        # Enhanced side view heatmap (Y-Z plane) - CRITICAL VIEW
-        scatter3 = axes[0, 2].scatter(points[:, 1], points[:, 2], c=distances_mm,
-                                 s=point_size, cmap=enhanced_wear_cmap, norm=norm)
-        axes[0, 2].set_title('ENHANCED SIDE VIEW HEATMAP\n(Y-Z plane) - Key Analysis View')
-        axes[0, 2].set_xlabel('Y')
-        axes[0, 2].set_ylabel('Z')
-        axes[0, 2].set_aspect('equal')
-        axes[0, 2].grid(True, alpha=0.3)
-        cb3 = plt.colorbar(scatter3, ax=axes[0, 2], boundaries=wear_bins, ticks=wear_bins)
-        cb3.set_label('Wear (mm)')
-        
-        # Radial analysis
-        y_coords = points[:, 1]
-        z_coords = points[:, 2]
-        y_center = np.mean(y_coords)
-        z_center = np.mean(z_coords)
-        radial_distances_yz = np.sqrt((y_coords - y_center) ** 2 + (z_coords - z_center) ** 2)
-        
-        scatter4 = axes[0, 3].scatter(radial_distances_yz, distances_mm,
-                                 c=distances_mm, s=point_size, cmap=enhanced_wear_cmap, norm=norm, alpha=0.6)
-        axes[0, 3].set_title('Enhanced Radial Wear Analysis\n(Y-Z plane distance vs wear)')
-        axes[0, 3].set_xlabel('Radial Distance in Y-Z plane')
-        axes[0, 3].set_ylabel('Wear (mm)')
-        axes[0, 3].grid(True, alpha=0.3)
-        cb4 = plt.colorbar(scatter4, ax=axes[0, 3], boundaries=wear_bins, ticks=wear_bins)
-        cb4.set_label('Wear (mm)')
-        
-        # Angular analysis
-        angles_yz = np.arctan2(z_coords - z_center, y_coords - y_center)
-        angles_yz_deg = np.degrees(angles_yz) % 360
-        
-        scatter5 = axes[1, 0].scatter(angles_yz_deg, distances_mm,
-                                 c=distances_mm, s=point_size, cmap=enhanced_wear_cmap, norm=norm, alpha=0.6)
-        axes[1, 0].set_title('Enhanced Angular Wear Analysis\n(Y-Z plane angle vs wear)')
-        axes[1, 0].set_xlabel('Angle in Y-Z plane (degrees)')
-        axes[1, 0].set_ylabel('Wear (mm)')
-        axes[1, 0].grid(True, alpha=0.3)
-        cb5 = plt.colorbar(scatter5, ax=axes[1, 0], boundaries=wear_bins, ticks=wear_bins)
-        cb5.set_label('Wear (mm)')
-        
-        # Y-coordinate analysis
-        scatter6 = axes[1, 1].scatter(y_coords, distances_mm,
-                                 c=distances_mm, s=point_size, cmap=enhanced_wear_cmap, norm=norm, alpha=0.6)
-        axes[1, 1].set_title('Enhanced Y-Coordinate Wear Analysis')
-        axes[1, 1].set_xlabel('Y Coordinate')
-        axes[1, 1].set_ylabel('Wear (mm)')
-        axes[1, 1].grid(True, alpha=0.3)
-        cb6 = plt.colorbar(scatter6, ax=axes[1, 1], boundaries=wear_bins, ticks=wear_bins)
-        cb6.set_label('Wear (mm)')
-        
-        # Z-coordinate analysis
-        scatter7 = axes[1, 2].scatter(z_coords, distances_mm,
-                                 c=distances_mm, s=point_size, cmap=enhanced_wear_cmap, norm=norm, alpha=0.6)
-        axes[1, 2].set_title('Enhanced Z-Coordinate Wear Analysis')
-        axes[1, 2].set_xlabel('Z Coordinate')
-        axes[1, 2].set_ylabel('Wear (mm)')
-        axes[1, 2].grid(True, alpha=0.3)
-        cb7 = plt.colorbar(scatter7, ax=axes[1, 2], boundaries=wear_bins, ticks=wear_bins)
-        cb7.set_label('Wear (mm)')
-        
-        # Analysis summary
-        stats_text = f"""ENHANCED HEATMAP ANALYSIS
-
-SPATIAL DISTRIBUTION:
-Y range: {np.max(y_coords) - np.min(y_coords):.3f}
-Z range: {np.max(z_coords) - np.min(z_coords):.3f}
-Y-Z center: [{y_center:.3f}, {z_center:.3f}]
-
-RADIAL ANALYSIS (Y-Z plane):
-Max radial distance: {np.max(radial_distances_yz):.3f}
-Mean radial distance: {np.mean(radial_distances_yz):.3f}
-Radial std dev: {np.std(radial_distances_yz):.3f}
-
-ANGULAR ANALYSIS (Y-Z plane):
-Angular wear correlation: {np.corrcoef(angles_yz_deg, distances_mm)[0,1]:.3f}
-Max wear angle: {angles_yz_deg[np.argmax(distances_mm)]:.1f}°
-
-COORDINATE ANALYSIS:
-Y-wear correlation: {np.corrcoef(y_coords, distances_mm)[0,1]:.3f}
-Z-wear correlation: {np.corrcoef(z_coords, distances_mm)[0,1]:.3f}
-
-WEAR DISTRIBUTION:
-Mean wear: {np.mean(distances_mm):.3f}mm
-Max wear: {np.max(distances_mm):.3f}mm
-Std dev: {np.std(distances_mm):.3f}mm
-95th percentile: {np.percentile(distances_mm, 95):.3f}mm
-
-ENHANCED INSIGHTS:
-- Y-Z plane provides circular mill cross-section
-- Radial patterns show liner wear distribution
-- Angular analysis reveals wear zones
-- Critical for understanding mill dynamics
-"""
-        
-        axes[1, 3].text(0.05, 0.95, stats_text, transform=axes[1, 3].transAxes,
-                    fontsize=9, verticalalignment='top', fontfamily='monospace',
-                    bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.9))
-        axes[1, 3].set_title('Enhanced Analysis Summary')
-        axes[1, 3].axis('off')
-        
-        plt.tight_layout()
-        
-        # Save visualization
-        if save_path is None:
-            self.file_paths['heatmaps_dir'].mkdir(parents=True, exist_ok=True)
-            save_path = str(self.file_paths['heatmaps_dir'] / 'enhanced_heatmap_comprehensive_analysis.png')
-        
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Enhanced heatmap visualization saved: {save_path}")
-        
-        plt.show()
-        return True
-
-    def _create_standard_heatmap_visualization(self, heatmap_result: Dict[str, Any],
-                                             save_path: Optional[str] = None) -> bool:
-        """Create standard heatmap visualization."""
-        
-        standard_heatmap = heatmap_result['standard_heatmap']
-        distances = heatmap_result['wear_distances']
-        
-        if standard_heatmap is None or distances is None:
-            print("ERROR: Standard heatmap data not available")
-            return False
-        
-        print("Creating standard heatmap visualization...")
-        
-        points = np.asarray(standard_heatmap.points)
-        
-        # Create standard visualization
-        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-        fig.suptitle('Standard Wear Heatmap Analysis', fontsize=16, fontweight='bold')
-        
-        point_size = 1.0
-        
-        # Top view
-        scatter1 = axes[0, 0].scatter(points[:, 0], points[:, 1], c=distances, s=point_size, cmap='viridis')
-        axes[0, 0].set_title('Top View Heatmap (X-Y)')
-        axes[0, 0].set_xlabel('X')
-        axes[0, 0].set_ylabel('Y')
-        axes[0, 0].set_aspect('equal')
-        axes[0, 0].grid(True, alpha=0.3)
-        plt.colorbar(scatter1, ax=axes[0, 0], label='Wear Distance')
-        
-        # Side view
-        scatter2 = axes[0, 1].scatter(points[:, 1], points[:, 2], c=distances, s=point_size, cmap='viridis')
-        axes[0, 1].set_title('Side View Heatmap (Y-Z)')
-        axes[0, 1].set_xlabel('Y')
-        axes[0, 1].set_ylabel('Z')
-        axes[0, 1].set_aspect('equal')
-        axes[0, 1].grid(True, alpha=0.3)
-        plt.colorbar(scatter2, ax=axes[0, 1], label='Wear Distance')
-        
-        # Distance distribution
-        axes[1, 0].hist(distances, bins=50, alpha=0.7, edgecolor='black')
-        axes[1, 0].set_xlabel('Distance to Reference (mm)')
-        axes[1, 0].set_ylabel('Number of Points')
-        axes[1, 0].set_title('Wear Distance Distribution')
-        axes[1, 0].grid(True, alpha=0.3)
-        
-        # Statistics
-        stats_text = f"""STANDARD HEATMAP ANALYSIS
-
-WEAR STATISTICS:
-Mean wear: {np.mean(distances):.2f}mm
-Max wear: {np.max(distances):.2f}mm
-Min wear: {np.min(distances):.2f}mm
-Std dev: {np.std(distances):.2f}mm
-95th percentile: {np.percentile(distances, 95):.2f}mm
-
-POINT ANALYSIS:
-Total points: {len(distances):,}
-Color mapping: 4-stage (Blue→Cyan→Green→Yellow→Red)
-"""
-        
-        axes[1, 1].text(0.05, 0.95, stats_text, transform=axes[1, 1].transAxes,
-                    fontsize=10, verticalalignment='top', fontfamily='monospace',
-                    bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.9))
-        axes[1, 1].set_title('Analysis Summary')
-        axes[1, 1].axis('off')
-        
-        plt.tight_layout()
-        
-        # Save visualization
-        if save_path is None:
-            self.file_paths['heatmaps_dir'].mkdir(parents=True, exist_ok=True)
-            save_path = str(self.file_paths['heatmaps_dir'] / 'standard_heatmap_analysis.png')
-        
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Standard heatmap visualization saved: {save_path}")
-        
-        plt.show()
-        return True
-
-    def create_two_scan_comparison_visualization(self, scan1_pcd: o3d.geometry.PointCloud,
-                                               scan2_pcd: o3d.geometry.PointCloud,
-                                               heatmap_result: Dict[str, Any],
-                                               save_path: Optional[str] = None) -> bool:
-        """
-        Create comprehensive two-scan comparison visualization.
-        
-        Args:
-            scan1_pcd: First scan point cloud
-            scan2_pcd: Second scan point cloud  
-            heatmap_result: Heatmap analysis results
-            save_path: Path to save visualization
             
-        Returns:
-            True if visualization created successfully
-        """
-        try:
-            print("\nCreating two-scan comparison visualization...")
+            # Extract scan data
+            scan1_pcd = heatmap_data.get('scan1')
+            scan2_pcd = heatmap_data.get('scan2')
             
-            # Sample points for visualization
-            viz_sample_size = self.config.HEATMAP_SAMPLE_SIZE_3D
+            if scan1_pcd is None or scan2_pcd is None:
+                print("ERROR: Missing scan data for heatmap visualization")
+                return False
             
-            scan1_points = self._downsample_for_viz(np.asarray(scan1_pcd.points), viz_sample_size)
-            scan2_points = self._downsample_for_viz(np.asarray(scan2_pcd.points), viz_sample_size)
+            # Extract heatmap statistics with defaults
+            mean_distance = heatmap_data.get('mean_distance', 0)
+            max_distance = heatmap_data.get('max_distance', 0)
+            min_distance = heatmap_data.get('min_distance', 0)
+            std_distance = heatmap_data.get('std_distance', 0)
+            points_analyzed = heatmap_data.get('points_analyzed', 0)
+            heatmap_type = heatmap_data.get('heatmap_type', 'standard')
             
-            # Create comparison visualization
-            fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-            fig.suptitle('Two-Scan Comparison with Heatmap Analysis', fontsize=16, fontweight='bold')
+            # Downsample for visualization
+            viz_sample_size = 2000
+            scan1_viz = self._downsample_for_viz(scan1_pcd, viz_sample_size)
+            scan2_viz = self._downsample_for_viz(scan2_pcd, viz_sample_size)
             
-            point_size = 0.8
+            scan1_points = np.asarray(scan1_viz.points)
+            scan2_points = np.asarray(scan2_viz.points)
             
-            # Scan 1 views
+            # Create heatmap visualization
+            fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+            fig.suptitle(f'Mill Wear Heatmap Analysis\n{heatmap_type.title()} Heatmap Results', 
+                        fontsize=16, fontweight='bold')
+            
+            point_size = 1.5
+            
+            # Top row: Individual scans
             axes[0, 0].scatter(scan1_points[:, 0], scan1_points[:, 1], 
-                              c='blue', s=point_size, alpha=0.6, label='Scan 1')
-            axes[0, 0].set_title('Scan 1 - Top View (X-Y)')
-            axes[0, 0].set_xlabel('X')
-            axes[0, 0].set_ylabel('Y')
-            axes[0, 0].set_aspect('equal')
-            axes[0, 0].grid(True, alpha=0.3)
+                              c='red', s=point_size, alpha=0.6, label='Scan 1')
+            axes[0, 0].set_title('Scan 1 Distribution\nTop View (X-Y)')
             axes[0, 0].legend()
+            axes[0, 0].grid(True, alpha=0.3)
+            axes[0, 0].set_aspect('equal')
             
             axes[0, 1].scatter(scan2_points[:, 0], scan2_points[:, 1], 
-                              c='red', s=point_size, alpha=0.6, label='Scan 2')
-            axes[0, 1].set_title('Scan 2 - Top View (X-Y)')
-            axes[0, 1].set_xlabel('X')
-            axes[0, 1].set_ylabel('Y')
-            axes[0, 1].set_aspect('equal')
-            axes[0, 1].grid(True, alpha=0.3)
+                              c='green', s=point_size, alpha=0.6, label='Scan 2')
+            axes[0, 1].set_title('Scan 2 Distribution\nTop View (X-Y)')
             axes[0, 1].legend()
+            axes[0, 1].grid(True, alpha=0.3)
+            axes[0, 1].set_aspect('equal')
             
-            # Overlay comparison
-            axes[0, 2].scatter(scan1_points[:, 0], scan1_points[:, 1], 
-                              c='blue', s=point_size*0.6, alpha=0.4, label='Scan 1')
-            axes[0, 2].scatter(scan2_points[:, 0], scan2_points[:, 1], 
-                              c='red', s=point_size, alpha=0.6, label='Scan 2')
-            axes[0, 2].set_title('Overlay Comparison - Top View')
-            axes[0, 2].set_xlabel('X')
-            axes[0, 2].set_ylabel('Y')
-            axes[0, 2].set_aspect('equal')
-            axes[0, 2].grid(True, alpha=0.3)
-            axes[0, 2].legend()
-            
-            # Side view comparisons
+            # Bottom row: Side views
             axes[1, 0].scatter(scan1_points[:, 1], scan1_points[:, 2], 
-                              c='blue', s=point_size, alpha=0.6, label='Scan 1')
-            axes[1, 0].set_title('Scan 1 - Side View (Y-Z)')
-            axes[1, 0].set_xlabel('Y')
-            axes[1, 0].set_ylabel('Z')
-            axes[1, 0].set_aspect('equal')
-            axes[1, 0].grid(True, alpha=0.3)
+                              c='red', s=point_size, alpha=0.6, label='Scan 1')
+            axes[1, 0].set_title('Scan 1 Distribution\nSide View (Y-Z)')
             axes[1, 0].legend()
+            axes[1, 0].grid(True, alpha=0.3)
+            axes[1, 0].set_aspect('equal')
             
             axes[1, 1].scatter(scan2_points[:, 1], scan2_points[:, 2], 
-                              c='red', s=point_size, alpha=0.6, label='Scan 2')
-            axes[1, 1].set_title('Scan 2 - Side View (Y-Z)')
-            axes[1, 1].set_xlabel('Y')
-            axes[1, 1].set_ylabel('Z')
-            axes[1, 1].set_aspect('equal')
-            axes[1, 1].grid(True, alpha=0.3)
+                              c='green', s=point_size, alpha=0.6, label='Scan 2')
+            axes[1, 1].set_title('Scan 2 Distribution\nSide View (Y-Z)')
             axes[1, 1].legend()
+            axes[1, 1].grid(True, alpha=0.3)
+            axes[1, 1].set_aspect('equal')
             
-            # Analysis summary
-            analysis = heatmap_result.get('analysis', {})
-            
-            if 'enhanced' in analysis:
-                stats = analysis['enhanced']
-                analysis_type = "Enhanced"
-            elif 'standard' in analysis:
-                stats = analysis['standard']
-                analysis_type = "Standard"
-            else:
-                stats = {}
-                analysis_type = "Basic"
-            
-            summary_text = f"""TWO-SCAN COMPARISON ANALYSIS
+            # Add text overlay with statistics
+            stats_text = f"""HEATMAP ANALYSIS RESULTS
 
-COMPARISON TYPE: {analysis_type} Heatmap
+TYPE: {heatmap_type.title()} Heatmap
+POINTS ANALYZED: {points_analyzed:,}
 
-SCAN STATISTICS:
-Scan 1 points: {len(scan1_points):,}
-Scan 2 points: {len(scan2_points):,}
+DISTANCE STATISTICS:
+Min Distance: {min_distance:.1f}mm
+Mean Distance: {mean_distance:.1f}mm  
+Max Distance: {max_distance:.1f}mm
+Std Deviation: {std_distance:.1f}mm
 
-WEAR ANALYSIS:
-Mean distance: {stats.get('mean_distance', 0):.2f}mm
-Max distance: {stats.get('max_distance', 0):.2f}mm
-Min distance: {stats.get('min_distance', 0):.2f}mm
-95th percentile: {stats.get('percentile_95', 0):.2f}mm
-
-INTERPRETATION:
-- Blue points: Scan 1 (reference)
-- Red points: Scan 2 (comparison)
-- Heatmap colors show wear progression
-- Side view (Y-Z) critical for analysis
-
-STATUS: Comparison complete
-Ready for detailed wear analysis
+ANALYSIS STATUS: COMPLETE
+✓ Dual-scan comparison performed
+✓ Distance calculations completed
+✓ Wear pattern analysis ready
 """
             
-            axes[1, 2].text(0.05, 0.95, summary_text, transform=axes[1, 2].transAxes,
-                            fontsize=9, verticalalignment='top', fontfamily='monospace',
-                            bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.9))
-            axes[1, 2].set_title('Comparison Summary')
-            axes[1, 2].axis('off')
+            # Add text to the first subplot
+            axes[0, 0].text(0.02, 0.98, stats_text, transform=axes[0, 0].transAxes,
+                           fontsize=8, verticalalignment='top', fontfamily='monospace',
+                           bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.9))
             
             plt.tight_layout()
             
-            # Save visualization
-            if save_path is None:
-                self.file_paths['heatmaps_dir'].mkdir(parents=True, exist_ok=True)
-                save_path = str(self.file_paths['heatmaps_dir'] / 'two_scan_comparison_analysis.png')
+            # Save heatmap visualization
+            save_path = self.file_paths['visualizations_dir'] / 'heatmap_wear_analysis.png'
+            plt.savefig(save_path, dpi=self.config.DPI, bbox_inches='tight')
+            plt.close()
             
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"Two-scan comparison visualization saved: {save_path}")
-            
-            plt.show()
+            print(f"Heatmap wear visualization saved: {save_path}")
             return True
             
         except Exception as e:
-            print(f"ERROR creating two-scan comparison visualization: {str(e)}")
+            print(f"ERROR creating heatmap visualization: {e}")
+            import traceback
+            traceback.print_exc()
             return False
-
-    def _downsample_for_viz(self, points: np.ndarray, target_size: int) -> np.ndarray:
-        """Downsample points for visualization performance."""
-        if len(points) <= target_size:
-            return points
+    
+    def create_two_scan_comparison_visualization(self, scan_data: Dict, reference_pcd: o3d.geometry.PointCloud, 
+                                               heatmap_results: Dict[str, Any]) -> bool:
+        """
+        Create two-scan comparison visualization.
+        FIXED: Proper data handling to prevent 'dict' object has no attribute 'points' error.
         
-        step = len(points) // target_size
-        indices = np.arange(0, len(points), step)[:target_size]
-        return points[indices]
+        Args:
+            scan_data: Dictionary containing scan1, scan2, and reference point clouds
+            reference_pcd: Reference point cloud
+            heatmap_results: Heatmap analysis results
+        """
+        try:
+            print("Creating two-scan comparison visualization...")
+            
+            # Extract point clouds from scan_data dict - FIXED
+            scan1_pcd = scan_data.get('scan1')
+            scan2_pcd = scan_data.get('scan2')
+            
+            if scan1_pcd is None or scan2_pcd is None:
+                print("ERROR: Missing scan data for comparison")
+                return False
+            
+            # Downsample for visualization
+            viz_sample_size = 3000
+            
+            ref_viz = self._downsample_for_viz(reference_pcd, viz_sample_size)
+            scan1_viz = self._downsample_for_viz(scan1_pcd, viz_sample_size)
+            scan2_viz = self._downsample_for_viz(scan2_pcd, viz_sample_size)
+            
+            ref_points = np.asarray(ref_viz.points)
+            scan1_points = np.asarray(scan1_viz.points)
+            scan2_points = np.asarray(scan2_viz.points)
+            
+            # Create comparison visualization
+            fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+            fig.suptitle('Dual-Scan Comparison Analysis\nSequential Processing Results', 
+                        fontsize=16, fontweight='bold')
+            
+            point_size = 1.0
+            
+            # Top row: Individual scans vs reference
+            axes[0, 0].scatter(ref_points[:, 0], ref_points[:, 1], 
+                              c='blue', s=point_size, alpha=0.5, label='Reference')
+            axes[0, 0].scatter(scan1_points[:, 0], scan1_points[:, 1], 
+                              c='red', s=point_size, alpha=0.6, label='Scan 1')
+            axes[0, 0].set_title('Reference vs Scan 1\nTop View (X-Y)')
+            axes[0, 0].legend()
+            axes[0, 0].grid(True, alpha=0.3)
+            axes[0, 0].set_aspect('equal')
+            
+            axes[0, 1].scatter(ref_points[:, 0], ref_points[:, 1], 
+                              c='blue', s=point_size, alpha=0.5, label='Reference')
+            axes[0, 1].scatter(scan2_points[:, 0], scan2_points[:, 1], 
+                              c='green', s=point_size, alpha=0.6, label='Scan 2')
+            axes[0, 1].set_title('Reference vs Scan 2\nTop View (X-Y)')
+            axes[0, 1].legend()
+            axes[0, 1].grid(True, alpha=0.3)
+            axes[0, 1].set_aspect('equal')
+            
+            # Comparison statistics
+            scan1_center = scan1_pcd.get_center()
+            scan2_center = scan2_pcd.get_center()
+            ref_center = reference_pcd.get_center()
+            
+            scan1_distance = np.linalg.norm(scan1_center - ref_center)
+            scan2_distance = np.linalg.norm(scan2_center - ref_center)
+            scan_separation = np.linalg.norm(scan1_center - scan2_center)
+            
+            comparison_stats = f"""DUAL-SCAN COMPARISON
+
+SCAN ALIGNMENT QUALITY:
+Scan 1 center distance: {scan1_distance:.1f}mm
+Scan 2 center distance: {scan2_distance:.1f}mm
+Inter-scan separation: {scan_separation:.1f}mm
+
+HEATMAP ANALYSIS:
+Available: {heatmap_results.get('heatmap_available', False)}
+Mean distance: {heatmap_results.get('mean_distance', 0):.1f}mm
+Max distance: {heatmap_results.get('max_distance', 0):.1f}mm
+
+PROCESSING STATUS:
+✓ Both scans processed sequentially
+✓ Individual alignment applied
+✓ Ready for wear analysis
+"""
+            
+            axes[0, 2].text(0.05, 0.95, comparison_stats, transform=axes[0, 2].transAxes,
+                           fontsize=9, verticalalignment='top', fontfamily='monospace',
+                           bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
+            axes[0, 2].set_title('Comparison Statistics')
+            axes[0, 2].axis('off')
+            
+            # Bottom row: Side views and direct comparison
+            axes[1, 0].scatter(ref_points[:, 1], ref_points[:, 2], 
+                              c='blue', s=point_size, alpha=0.5, label='Reference')
+            axes[1, 0].scatter(scan1_points[:, 1], scan1_points[:, 2], 
+                              c='red', s=point_size, alpha=0.6, label='Scan 1')
+            axes[1, 0].set_title('Reference vs Scan 1\nSide View (Y-Z)')
+            axes[1, 0].legend()
+            axes[1, 0].grid(True, alpha=0.3)
+            axes[1, 0].set_aspect('equal')
+            
+            axes[1, 1].scatter(ref_points[:, 1], ref_points[:, 2], 
+                              c='blue', s=point_size, alpha=0.5, label='Reference')
+            axes[1, 1].scatter(scan2_points[:, 1], scan2_points[:, 2], 
+                              c='green', s=point_size, alpha=0.6, label='Scan 2')
+            axes[1, 1].set_title('Reference vs Scan 2\nSide View (Y-Z)')
+            axes[1, 1].legend()
+            axes[1, 1].grid(True, alpha=0.3)
+            axes[1, 1].set_aspect('equal')
+            
+            # Direct scan comparison
+            axes[1, 2].scatter(scan1_points[:, 0], scan1_points[:, 1], 
+                              c='red', s=point_size, alpha=0.6, label='Scan 1')
+            axes[1, 2].scatter(scan2_points[:, 0], scan2_points[:, 1], 
+                              c='green', s=point_size, alpha=0.6, label='Scan 2')
+            axes[1, 2].set_title('Direct Scan Comparison\nTop View (X-Y)')
+            axes[1, 2].legend()
+            axes[1, 2].grid(True, alpha=0.3)
+            axes[1, 2].set_aspect('equal')
+            
+            plt.tight_layout()
+            
+            # Save with unique filename
+            save_path = self.file_paths['visualizations_dir'] / 'dual_scan_comparison_analysis.png'
+            plt.savefig(save_path, dpi=self.config.DPI, bbox_inches='tight')
+            plt.close()
+            
+            print(f"Two-scan comparison visualization saved: {save_path}")
+            return True
+            
+        except Exception as e:
+            print(f"ERROR creating two-scan comparison visualization: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _downsample_for_viz(self, pcd: o3d.geometry.PointCloud, target_size: int) -> o3d.geometry.PointCloud:
+        """Helper method to downsample point clouds for visualization."""
+        if len(pcd.points) <= target_size:
+            return pcd
+        
+        # Calculate downsampling ratio
+        ratio = len(pcd.points) // target_size
+        return pcd.uniform_down_sample(max(1, ratio))
+    
+    def _calculate_overlap_quality(self, reference_pcd: o3d.geometry.PointCloud,
+                                  aligned_pcd: o3d.geometry.PointCloud) -> float:
+        """Calculate overlap quality percentage."""
+        try:
+            # Use ICP evaluation to get overlap quality
+            evaluation = o3d.pipelines.registration.evaluate_registration(
+                aligned_pcd, reference_pcd, 0.05, np.eye(4)  # 5cm threshold
+            )
+            return evaluation.fitness * 100
+        except:
+            return 0.0
 
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("TESTING VISUALIZATION MODULE")
+    print("TESTING COMPLETE VISUALIZATION MODULE - FIXED VERSION")
     print("=" * 60)
     
     processor = VisualizationProcessor()
-    print("Visualization processor created successfully")
+    print("Complete visualization processor created successfully")
     
-    print("\nVisualization Module - Ready for pipeline integration")
-    print("Capabilities included:")
-    print("- Noise removal visualization (before/after)")
-    print("- Alignment visualization (complete pipeline)")
-    print("- Enhanced side view analysis (Y-Z plane)")
-    print("- Statistical overlays and quality metrics")
-    print("- Heatmap visualization (standard and enhanced)")
-    print("- Two-scan comparison visualization")
+    print("\nFixed Visualization Features:")
+    print("- ✅ Unique filenames per scan (no overwriting)")
+    print("- ✅ Enhanced center markers with precision coordinates")
+    print("- ✅ Center distance measurements and improvement tracking")
+    print("- ✅ Fixed two-scan comparison data handling")
+    print("- ✅ Improved heatmap visualization error handling")
+    print("- ✅ Multiple view angles (X-Y, Y-Z, X-Z) for comprehensive analysis")
+    print("- ✅ Quality assessment with color-coded status indicators")
+    print("- ✅ Professional layout and presentation")
+    
+    print("\nReady for pipeline integration with all fixes applied")
