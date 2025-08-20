@@ -1,0 +1,312 @@
+# Mill Analysis Project - Enhanced .gitignore
+# Optimized for Python 3D Point Cloud Processing with Open3D
+
+# ============================================================================
+# VIRTUAL ENVIRONMENTS & PYTHON ENVIRONMENTS
+# ============================================================================
+mill_analysis_env/
+venv/
+env/
+ENV/
+.venv/
+.env/
+pyvenv.cfg
+
+# ============================================================================
+# LARGE DATA FILES & POINT CLOUDS
+# ============================================================================
+# Point cloud files (typically very large)
+*.ply
+*.PLY
+*.e57
+*.E57
+*.pcd
+*.PCD
+*.las
+*.LAS
+*.xyz
+*.XYZ
+
+# Data directories with large files
+data/reference/
+data/inner_scans/
+data/processed/
+data/raw/
+*_DATA_BACKUP/
+datasets/
+
+# ============================================================================
+# GENERATED OUTPUT & PROCESSING RESULTS
+# ============================================================================
+output/
+outputs/
+intermediate/
+backup_old_results/
+results/
+temp/
+tmp/
+cache/
+processed/
+generated/
+
+# Processing artifacts
+*_processed.*
+*_aligned.*
+*_filtered.*
+*_downsampled.*
+*_heatmap.*
+
+# ============================================================================
+# PYTHON CACHE & BYTECODE
+# ============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ============================================================================
+# AI/ML SPECIFIC FILES
+# ============================================================================
+# Model files and checkpoints
+*.model
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+models/
+saved_models/
+
+# Training artifacts
+logs/
+runs/
+tensorboard/
+wandb/
+mlruns/
+
+# Data processing artifacts
+*.npy
+*.npz
+features/
+embeddings/
+
+# ============================================================================
+# JUPYTER & IPYTHON
+# ============================================================================
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# Jupyter temp files
+.jupyter/
+.ipython/
+
+# ============================================================================
+# DEVELOPMENT ENVIRONMENT
+# ============================================================================
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# VS Code specific
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+.vscode/extensions.json
+
+# PyCharm specific
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/dictionaries
+.idea/**/shelf
+
+# ============================================================================
+# OPERATING SYSTEM FILES
+# ============================================================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================================================
+# TESTING & COVERAGE
+# ============================================================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Test artifacts
+test_*.py
+*_test.py
+debugging/
+experiments/
+test_results/
+
+# ============================================================================
+# DOCUMENTATION & BUILD
+# ============================================================================
+# Sphinx documentation
+docs/_build/
+.readthedocs.yml
+
+# LaTeX & PDF builds
+*.aux
+*.log
+*.out
+*.toc
+*.pdf
+
+# ============================================================================
+# CONFIGURATION & SECRETS
+# ============================================================================
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+config.ini
+secrets.json
+*.key
+*.pem
+
+# Local configuration
+local_settings.py
+settings_local.py
+
+# ============================================================================
+# TEMPORARY & BACKUP FILES
+# ============================================================================
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*~
+
+# Backup directories
+backup/
+backups/
+old/
+archive/
+
+# ============================================================================
+# LARGE FILES & ARCHIVES
+# ============================================================================
+# Large files (GitHub has 100MB limit)
+*.zip
+*.tar.gz
+*.tar.bz2
+*.rar
+*.7z
+*.gz
+*.bz2
+*.xz
+
+# Large data files
+*.csv.gz
+*.json.gz
+*.parquet
+
+# ============================================================================
+# DATABASE FILES
+# ============================================================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# ============================================================================
+# LOG FILES
+# ============================================================================
+*.log
+*.out
+*.err
+logs/
+log/
+
+# Application specific logs
+debug.log
+error.log
+access.log
+application.log
+
+# ============================================================================
+# PROJECT SPECIFIC PATTERNS
+# ============================================================================
+# Custom patterns for this project
+mill_analysis_*_output/
+*_analysis_results/
+performance_metrics/
+benchmark_results/
+
+# Visualization exports
+plots/
+figures/
+screenshots/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.pdf
+
+# Configuration backups
+config_backup/
+settings_backup/
