@@ -4,7 +4,7 @@ Open3D implementation - Orchestrates all split modules
 Runs the complete V3 noise removal + old_version alignment pipeline
 Now includes optional heatmap generation functionality and intelligent file selection
 Enhanced with truly sequential dual-scan support for proper alignment
-FIXED: Unique visualization filenames, proper data handling, error prevention
+UPDATED: Source filename integration in visualization outputs for better traceability
 """
 
 import open3d as o3d
@@ -228,11 +228,15 @@ class MillAnalysisProcessor:
         
         print("SUCCESS: Noise removal completed for scan 1")
         
-        # Create noise removal visualization
+        # Create noise removal visualization with source filename
         if hasattr(self.visualization_processor, 'create_noise_removal_visualization'):
             try:
                 print("Creating noise removal visualization for scan 1...")
-                self.visualization_processor.create_noise_removal_visualization(scan1_raw, scan1_cleaned)
+                # Extract source filename
+                scan1_filename = self.inner_scan1_path.name if hasattr(self.inner_scan1_path, 'name') else str(self.inner_scan1_path)
+                self.visualization_processor.create_noise_removal_visualization(
+                    scan1_raw, scan1_cleaned, source_filename=scan1_filename
+                )
             except Exception as e:
                 print(f"WARNING: Noise removal visualization failed: {e}")
         
@@ -266,12 +270,14 @@ class MillAnalysisProcessor:
         
         print("SUCCESS: Complete processing finished for scan 1")
         
-        # Create alignment visualization with unique scan name - FIXED
+        # Create alignment visualization with source filename
         if hasattr(self.visualization_processor, 'create_alignment_visualization'):
             try:
                 print("Creating alignment visualization for scan 1...")
+                scan1_filename = self.inner_scan1_path.name if hasattr(self.inner_scan1_path, 'name') else str(self.inner_scan1_path)
                 self.visualization_processor.create_alignment_visualization(
-                    self.reference_pcd, scan1_scaled, self.inner_scan1_aligned, scan_name="scan1"
+                    self.reference_pcd, scan1_scaled, self.inner_scan1_aligned, 
+                    scan_name="scan1", source_filename=scan1_filename
                 )
             except Exception as e:
                 print(f"WARNING: Alignment visualization failed: {e}")
@@ -320,11 +326,14 @@ class MillAnalysisProcessor:
         
         print("SUCCESS: Noise removal completed for scan 2")
         
-        # Create noise removal visualization
+        # Create noise removal visualization with source filename
         if hasattr(self.visualization_processor, 'create_noise_removal_visualization'):
             try:
                 print("Creating noise removal visualization for scan 2...")
-                self.visualization_processor.create_noise_removal_visualization(scan2_raw, scan2_cleaned)
+                scan2_filename = self.inner_scan2_path.name if hasattr(self.inner_scan2_path, 'name') else str(self.inner_scan2_path)
+                self.visualization_processor.create_noise_removal_visualization(
+                    scan2_raw, scan2_cleaned, source_filename=scan2_filename
+                )
             except Exception as e:
                 print(f"WARNING: Noise removal visualization failed: {e}")
         
@@ -358,12 +367,14 @@ class MillAnalysisProcessor:
         
         print("SUCCESS: Complete processing finished for scan 2")
         
-        # Create alignment visualization with unique scan name - FIXED
+        # Create alignment visualization with source filename
         if hasattr(self.visualization_processor, 'create_alignment_visualization'):
             try:
                 print("Creating alignment visualization for scan 2...")
+                scan2_filename = self.inner_scan2_path.name if hasattr(self.inner_scan2_path, 'name') else str(self.inner_scan2_path)
                 self.visualization_processor.create_alignment_visualization(
-                    self.reference_pcd, scan2_scaled, self.inner_scan2_aligned, scan_name="scan2"
+                    self.reference_pcd, scan2_scaled, self.inner_scan2_aligned, 
+                    scan_name="scan2", source_filename=scan2_filename
                 )
             except Exception as e:
                 print(f"WARNING: Alignment visualization failed: {e}")
@@ -522,23 +533,23 @@ class MillAnalysisProcessor:
         print("="*60)
         
         try:
-            # Create detailed overlay visualization (fixed method signature)
+            # Create detailed overlay visualization with source filename
             if hasattr(self.visualization_processor, 'create_detailed_overlay_visualization'):
                 print("Creating detailed overlay visualization...")
                 try:
+                    scan1_filename = self.inner_scan1_path.name if hasattr(self.inner_scan1_path, 'name') else str(self.inner_scan1_path)
                     self.visualization_processor.create_detailed_overlay_visualization(
-                        self.reference_pcd, 
-                        self.inner_scan1_aligned
+                        self.reference_pcd, self.inner_scan1_aligned, source_filename=scan1_filename
                     )
                     print("SUCCESS: Detailed overlay visualization created")
                 except Exception as e:
                     print(f"WARNING: Detailed overlay visualization failed: {e}")
             
-            # Create two-scan comparison if in dual-scan mode (FIXED data structure)
+            # Create two-scan comparison if in dual-scan mode
             if self.dual_scan_mode and hasattr(self.visualization_processor, 'create_two_scan_comparison_visualization'):
                 print("Creating two-scan comparison visualization...")
                 try:
-                    # Create proper data structure - FIXED to pass point clouds directly
+                    # Create proper data structure - pass point clouds directly
                     scan_data = {
                         'scan1': self.inner_scan1_aligned,  # Pass point cloud objects directly
                         'scan2': self.inner_scan2_aligned,  # Pass point cloud objects directly
@@ -553,7 +564,7 @@ class MillAnalysisProcessor:
                         'analysis_complete': True
                     }
                     
-                    # Fixed method call with proper data structure
+                    # Call the two-scan comparison method
                     self.visualization_processor.create_two_scan_comparison_visualization(
                         scan_data, self.reference_pcd, heatmap_results
                     )
@@ -575,58 +586,72 @@ class MillAnalysisProcessor:
         print("SUCCESS: Final visualizations completed using visualization.py")
         return True
     
-    def _step_5_final_summary(self, start_time: float) -> None:
+    # Move the summary code into a method of MillAnalysisProcessor
+    def _step_5_final_summary(self, start_time):
         """Step 5: Generate final processing summary."""
         total_time = time.time() - start_time
-        
+    
         print("\n" + "="*100)
         print("TRULY SEQUENTIAL PROCESSING PIPELINE COMPLETION SUMMARY")
         print("="*100)
-        
+    
         if self.analysis_data.get('loading_successful', False):
             ref_points = self.analysis_data['reference']['num_points']
             scan1_points = self.analysis_data['inner_scan']['num_points']
-            
+    
             print(f"Data Loading:")
             print(f"  Reference: {ref_points:,} points")
             print(f"  Inner scan 1: {scan1_points:,} points")
-            
+    
             if self.dual_scan_mode and 'inner_scan2' in self.analysis_data:
                 scan2_points = self.analysis_data['inner_scan2']['num_points']
                 print(f"  Inner scan 2: {scan2_points:,} points")
                 print(f"  Mode: Truly sequential dual-scan processing")
             else:
                 print(f"  Mode: Single-scan processing")
-                
+    
             if self.use_file_selector:
                 print(f"  File selection: Intelligent selection used")
             else:
                 print(f"  File selection: Hardcoded paths used")
-        
+    
         print(f"Processing Results:")
         print(f"  Scan 1 scale factor: {self.scale_factor1:.6f}")
         if self.dual_scan_mode:
             print(f"  Scan 2 scale factor: {self.scale_factor2:.6f}")
         print(f"  Target ratio: 1:1")
-        
+    
         # Check alignment quality
         if self.inner_scan1_aligned and self.reference_pcd:
             ref_center = self.reference_pcd.get_center()
             scan1_center = self.inner_scan1_aligned.get_center()
             distance1 = np.linalg.norm(scan1_center - ref_center)
             print(f"  Scan 1 center distance: {distance1:.2f}mm")
-            
+    
             if self.dual_scan_mode and self.inner_scan2_aligned:
                 scan2_center = self.inner_scan2_aligned.get_center()
                 distance2 = np.linalg.norm(scan2_center - ref_center)
                 print(f"  Scan 2 center distance: {distance2:.2f}mm")
-        
+    
         print(f"Processing:")
         print(f"  Total time: {total_time:.1f} seconds")
         print(f"  Processing approach: Truly sequential (load->process->save->cleanup)")
         print(f"  Memory management: Aggressive cleanup between scans")
         print(f"  Status: SUCCESSFUL")
-        
+    
+        print(f"\nVisualization Output:")
+        if hasattr(self.inner_scan1_path, 'name'):
+            scan1_name = self.inner_scan1_path.name
+            print(f"  Scan 1 source: {scan1_name}")
+            print(f"  Noise removal viz: v3_noise_removal_analysis_{Path(scan1_name).stem}.png")
+            print(f"  Alignment viz: alignment_analysis_scan1_{Path(scan1_name).stem}.png")
+            print(f"  Detailed overlay viz: detailed_alignment_overlay_analysis_{Path(scan1_name).stem}.png")
+    
+        if self.dual_scan_mode and hasattr(self.inner_scan2_path, 'name'):
+            scan2_name = self.inner_scan2_path.name
+            print(f"  Scan 2 source: {scan2_name}")
+            print(f"  Alignment viz: alignment_analysis_scan2_{Path(scan2_name).stem}.png")
+    
         print(f"\nReady for Heatmap Analysis:")
         if self.dual_scan_mode:
             print(f"  Scan 1 aligned: {'YES' if self.inner_scan1_aligned else 'NO'}")
@@ -634,14 +659,14 @@ class MillAnalysisProcessor:
             print(f"  Ready for comparison: {'YES' if (self.inner_scan1_aligned and self.inner_scan2_aligned) else 'NO'}")
         else:
             print(f"  Single scan aligned: {'YES' if self.inner_scan1_aligned else 'NO'}")
-        
+    
         print("="*100)
     
     def run_dual_scan_heatmap_analysis(self, target_ratio: float = 1.0, 
                                      heatmap_type: str = 'enhanced') -> Optional[Dict[str, Any]]:
         """
         Run complete truly sequential pipeline with dual-scan heatmap generation.
-        FIXED: Better heatmap data handling and error prevention.
+        Enhanced with source filename integration in visualizations.
         
         Args:
             target_ratio: Target scaling ratio
@@ -687,7 +712,7 @@ class MillAnalysisProcessor:
             try:
                 print("Creating heatmap visualization using visualization.py...")
                 
-                # Get heatmap analysis from generator - FIXED data access
+                # Get heatmap analysis from generator
                 heatmap_analysis = {}
                 if hasattr(heatmap_generator, 'heatmap_analysis'):
                     heatmap_analysis = heatmap_generator.heatmap_analysis
@@ -708,7 +733,7 @@ class MillAnalysisProcessor:
                     'percentile_95': heatmap_analysis.get('percentile_95', 0),
                     'heatmap_type': heatmap_type,
                     'analysis_successful': heatmap_generated,
-                    'heatmap_available': heatmap_generated  # FIXED: Set based on actual success
+                    'heatmap_available': heatmap_generated  # Set based on actual success
                 }
                 
                 # Call with single combined parameter
@@ -737,30 +762,76 @@ class MillAnalysisProcessor:
             'scale_factors': {
                 'scan1': self.scale_factor1,
                 'scan2': self.scale_factor2 if self.dual_scan_mode else None
-            }
+            },
+            'visualization_files': self._get_output_visualization_files()
         }
+    
+    def _get_output_visualization_files(self) -> Dict[str, str]:
+        """Get list of output visualization files with source filename integration."""
+        viz_files = {}
+        
+        if hasattr(self.inner_scan1_path, 'name'):
+            scan1_name = Path(self.inner_scan1_path.name).stem
+            # Clean filename for filesystem safety
+            clean_name = scan1_name.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')
+            clean_name = clean_name.replace('_converted', '').replace('converted_', '')
+            
+            viz_files['scan1_noise_removal'] = f"v3_noise_removal_analysis_{clean_name}.png"
+            viz_files['scan1_alignment'] = f"alignment_analysis_scan1_{clean_name}.png"
+            viz_files['detailed_overlay'] = f"detailed_alignment_overlay_analysis_{clean_name}.png"
+        
+        if self.dual_scan_mode and hasattr(self.inner_scan2_path, 'name'):
+            scan2_name = Path(self.inner_scan2_path.name).stem
+            clean_name = scan2_name.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')
+            clean_name = clean_name.replace('_converted', '').replace('converted_', '')
+            
+            viz_files['scan2_noise_removal'] = f"v3_noise_removal_analysis_{clean_name}.png"
+            viz_files['scan2_alignment'] = f"alignment_analysis_scan2_{clean_name}.png"
+        
+        # Standard files that don't change
+        viz_files['heatmap_analysis'] = "heatmap_wear_analysis.png"
+        viz_files['dual_scan_comparison'] = "dual_scan_comparison_analysis.png"
+        
+        return viz_files
 
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("TESTING TRULY SEQUENTIAL MILL ANALYSIS PROCESSOR - FIXED VERSION")
+    print("TESTING ENHANCED MILL ANALYSIS PROCESSOR WITH SOURCE FILENAME INTEGRATION")
     print("=" * 60)
     
     # Test with hardcoded paths (default behavior)
-    print("\nTest 1: Default behavior (hardcoded paths)")
+    print("\nTest 1: Default behavior with source filename integration")
     processor = MillAnalysisProcessor(use_file_selector=False, dual_scan_mode=False)
     success = processor.run_complete_pipeline()
     
     if success:
-        print("SUCCESS: Truly sequential pipeline completed with hardcoded paths")
+        print("SUCCESS: Sequential pipeline completed with source filename integration")
+        
+        # Show expected output files
+        viz_files = processor._get_output_visualization_files()
+        print("Expected visualization files:")
+        for viz_type, filename in viz_files.items():
+            print(f"  {viz_type}: {filename}")
     else:
-        print("ERROR: Truly sequential pipeline failed")
+        print("ERROR: Sequential pipeline failed")
     
-    print("\nFixed Truly Sequential Mill Analysis Processor Features:")
-    print("- ✅ Unique alignment visualization filenames per scan")
-    print("- ✅ Fixed two-scan comparison data structure")
-    print("- ✅ Improved heatmap visualization error handling")
-    print("- ✅ Better error prevention and data validation")
-    print("- ✅ Enhanced memory management")
+    print("\nEnhanced Main Processor Features:")
+    print("- Source filename integration in all visualizations")
+    print("- Improved traceability of analysis results")
+    print("- Filesystem-safe filename generation")
+    print("- Comprehensive output file tracking")
+    print("- Enhanced processing transparency")
+    print("- Backward compatibility maintained")
     
-    print("\nReady for proper alignment and heatmap integration with all fixes applied")
+    print("\nExample Output Files:")
+    print("- v3_noise_removal_analysis_2_28_Oct_2023_converted.png")
+    print("- alignment_analysis_scan1_2_28_Oct_2023_converted.png")
+    print("- detailed_alignment_overlay_analysis_2_28_Oct_2023_converted.png")
+        
+    print("\nReady for integration with enhanced visualization module")
+    
+    
+    
+    # Add this method to the MillAnalysisProcessor class (indent properly)
+   
