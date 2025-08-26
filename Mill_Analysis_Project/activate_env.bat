@@ -1,25 +1,56 @@
 @echo off
-echo ============================================
-echo Mill Analysis Project - Clean Open3D Implementation
-echo ============================================
+echo ================================================================
+echo MILL ANALYSIS PROJECT - QUICK ACTIVATION
+echo ================================================================
+
+set ENV_NAME=mill_analysis_env
+
+:: Check if environment exists
+if not exist "%ENV_NAME%" (
+    echo ERROR: Virtual environment '%ENV_NAME%' not found
+    echo.
+    echo Please run 'setup_env.bat' first to create the environment
+    echo.
+    pause
+    exit /b 1
+)
+
+:: Activate environment
+echo Activating virtual environment '%ENV_NAME%'...
+call %ENV_NAME%\Scripts\activate.bat
+
+if %errorlevel% neq 0 (
+    echo ERROR: Failed to activate virtual environment
+    pause
+    exit /b 1
+)
+
+:: Verify activation
 echo.
-echo Activating virtual environment (Python 3.11.3)...
-call mill_analysis_env\Scripts\activate.bat
+echo ✓ Environment activated successfully!
+echo Python location: %VIRTUAL_ENV%
 echo.
-echo Environment activated with clean dependencies!
+
+:: Quick dependency check
+echo Checking core dependencies...
+python -c "import open3d, numpy, matplotlib, scipy; print('✓ All core dependencies available')" 2>nul
+if %errorlevel% neq 0 (
+    echo WARNING: Some dependencies missing or broken
+    echo Run 'setup_env.bat' to reinstall dependencies
+    echo.
+) else (
+    echo ✓ All dependencies verified
+)
+
+echo.
+echo ================================================================
+echo ENVIRONMENT READY FOR MILL ANALYSIS (CPU-ONLY MODE)
+echo ================================================================
 echo.
 echo Available commands:
-echo   - python test_clean_installation.py   (verify clean setup)
-echo   - python src\data_loader.py           (test data loading template)
-echo   - python src\config.py                (test configuration)
+echo   python src/run_pipeline.py              # Standard CPU processing
+echo   python src/run_heatmap_analysis.py      # Heatmap analysis
+echo   python src/main_processor.py            # Complete pipeline
 echo.
-echo Clean libraries installed:
-echo   - Open3D 0.19.0 (3D point cloud processing)
-echo   - NumPy (numerical computing)
-echo   - Matplotlib (basic visualization)
-echo   - typing-extensions (type hints)
-echo.
-echo Ready for clean implementation from scratch!
-echo To deactivate: type 'deactivate'
-echo.
-cmd /k
+echo Type 'deactivate' to exit the environment
+echo ================================================================
