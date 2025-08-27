@@ -43,7 +43,12 @@ class MillAnalysisProcessor:
         self.data_loader = PointCloudLoader()
         self.noise_processor = NoiseRemovalProcessor()
         self.scaling_processor = ScalingProcessor()
-        self.alignment_processor = AlignmentProcessor()
+        
+        # Updated: Use AlignmentProcessor with fixed scaling enabled
+        self.alignment_processor = AlignmentProcessor(
+            enable_fixed_scaling=True, fixed_scale_factor=1000.0
+        )
+        
         self.visualization_processor = VisualizationProcessor()
         
         # Core data storage
@@ -97,6 +102,19 @@ class MillAnalysisProcessor:
             if self.dual_scan_mode:
                 if not self._step_3_process_scan_2_completely(target_ratio):
                     return False
+                
+                # STEP 3.5: Apply post-processing ICP between scans if dual-scan mode
+                # This is automatically handled by the updated AlignmentProcessor
+                print("\n[STEP 3.5] CHECKING FOR POST-PROCESSING ICP BETWEEN SCANS")
+                if self.alignment_processor.apply_post_processing_icp_if_ready():
+                    print("SUCCESS: Post-processing ICP applied between scans")
+                    
+                    # Update our references to the aligned scans
+                    dual_scan_results = self.alignment_processor.get_dual_scan_results()
+                    if 'scan1_aligned' in dual_scan_results and 'scan2_aligned' in dual_scan_results:
+                        self.inner_scan1_aligned = dual_scan_results['scan1_aligned']
+                        self.inner_scan2_aligned = dual_scan_results['scan2_aligned']
+                        print("SUCCESS: Updated aligned scans with post-ICP results")
             
             # STEP 4: Create final visualizations using visualization.py
             if not self._step_4_create_final_visualizations():
@@ -244,46 +262,42 @@ class MillAnalysisProcessor:
         del scan1_raw
         gc.collect()
         
-        # Sub-step 2.3: Scaling for Scan 1
-        print("\n[STEP 2.3] SCALING - SCAN 1")
-        scan1_scaled, self.scale_factor1 = self._apply_scaling(
-            self.reference_pcd, scan1_cleaned, target_ratio
+        # Sub-step 2.3 & 2.4: Scaling and Alignment for Scan 1 (using enhanced alignment processor)
+        print("\n[STEP 2.3-2.4] SCALING AND ALIGNMENT - SCAN 1")
+        
+        # Use the enhanced alignment processor with fixed scaling
+        self.inner_scan1_aligned, self.scale_factor1 = self.alignment_processor.apply_complete_alignment_with_fixed_scaling(
+            self.reference_pcd, scan1_cleaned, scan_identifier="scan1"
         )
         
-        if scan1_scaled is None:
-            print("ERROR: Scaling failed for scan 1")
-            return False
-        
-        print(f"SUCCESS: Scaling applied to scan 1 (factor: {self.scale_factor1:.6f})")
-        
-        # Cleanup cleaned scan1
-        del scan1_cleaned
-        gc.collect()
-        
-        # Sub-step 2.4: Alignment for Scan 1
-        print("\n[STEP 2.4] ALIGNMENT - SCAN 1")
-        self.inner_scan1_aligned = self._apply_alignment(self.reference_pcd, scan1_scaled)
-        
         if self.inner_scan1_aligned is None:
-            print("ERROR: Alignment failed for scan 1")
+            print("ERROR: Enhanced alignment failed for scan 1")
             return False
         
-        print("SUCCESS: Complete processing finished for scan 1")
+        print(f"SUCCESS: Enhanced alignment applied to scan 1 (scale factor: {self.scale_factor1:.6f})")
         
         # Create alignment visualization with source filename
         if hasattr(self.visualization_processor, 'create_alignment_visualization'):
             try:
                 print("Creating alignment visualization for scan 1...")
                 scan1_filename = self.inner_scan1_path.name if hasattr(self.inner_scan1_path, 'name') else str(self.inner_scan1_path)
+                
+                # Create a scaled copy for visualization
+                scan1_scaled = copy.deepcopy(scan1_cleaned)
+                scan1_scaled.scale(self.scale_factor1, center=scan1_scaled.get_center())
+                
                 self.visualization_processor.create_alignment_visualization(
                     self.reference_pcd, scan1_scaled, self.inner_scan1_aligned, 
                     scan_name="scan1", source_filename=scan1_filename
                 )
+                
+                # Cleanup scaled copy
+                del scan1_scaled
             except Exception as e:
                 print(f"WARNING: Alignment visualization failed: {e}")
         
-        # Cleanup scaled scan1
-        del scan1_scaled
+        # Cleanup cleaned scan1
+        del scan1_cleaned
         gc.collect()
         
         # Save aligned scan 1 to disk for heatmap analysis
@@ -341,46 +355,42 @@ class MillAnalysisProcessor:
         del scan2_raw
         gc.collect()
         
-        # Sub-step 3.3: Scaling for Scan 2 (individual scaling)
-        print("\n[STEP 3.3] SCALING - SCAN 2")
-        scan2_scaled, self.scale_factor2 = self._apply_scaling(
-            self.reference_pcd, scan2_cleaned, target_ratio
+        # Sub-step 3.3 & 3.4: Scaling and Alignment for Scan 2 (using enhanced alignment processor)
+        print("\n[STEP 3.3-3.4] SCALING AND ALIGNMENT - SCAN 2")
+        
+        # Use the enhanced alignment processor with fixed scaling
+        self.inner_scan2_aligned, self.scale_factor2 = self.alignment_processor.apply_complete_alignment_with_fixed_scaling(
+            self.reference_pcd, scan2_cleaned, scan_identifier="scan2"
         )
         
-        if scan2_scaled is None:
-            print("ERROR: Scaling failed for scan 2")
-            return False
-        
-        print(f"SUCCESS: Scaling applied to scan 2 (factor: {self.scale_factor2:.6f})")
-        
-        # Cleanup cleaned scan2
-        del scan2_cleaned
-        gc.collect()
-        
-        # Sub-step 3.4: Alignment for Scan 2 (individual alignment)
-        print("\n[STEP 3.4] ALIGNMENT - SCAN 2")
-        self.inner_scan2_aligned = self._apply_alignment(self.reference_pcd, scan2_scaled)
-        
         if self.inner_scan2_aligned is None:
-            print("ERROR: Alignment failed for scan 2")
+            print("ERROR: Enhanced alignment failed for scan 2")
             return False
         
-        print("SUCCESS: Complete processing finished for scan 2")
+        print(f"SUCCESS: Enhanced alignment applied to scan 2 (scale factor: {self.scale_factor2:.6f})")
         
         # Create alignment visualization with source filename
         if hasattr(self.visualization_processor, 'create_alignment_visualization'):
             try:
                 print("Creating alignment visualization for scan 2...")
                 scan2_filename = self.inner_scan2_path.name if hasattr(self.inner_scan2_path, 'name') else str(self.inner_scan2_path)
+                
+                # Create a scaled copy for visualization
+                scan2_scaled = copy.deepcopy(scan2_cleaned)
+                scan2_scaled.scale(self.scale_factor2, center=scan2_scaled.get_center())
+                
                 self.visualization_processor.create_alignment_visualization(
                     self.reference_pcd, scan2_scaled, self.inner_scan2_aligned, 
                     scan_name="scan2", source_filename=scan2_filename
                 )
+                
+                # Cleanup scaled copy
+                del scan2_scaled
             except Exception as e:
                 print(f"WARNING: Alignment visualization failed: {e}")
         
-        # Cleanup scaled scan2
-        del scan2_scaled
+        # Cleanup cleaned scan2
+        del scan2_cleaned
         gc.collect()
         
         # Save aligned scan 2 to disk for heatmap analysis
@@ -392,140 +402,33 @@ class MillAnalysisProcessor:
         
         return True
     
-    def _apply_scaling(self, reference_pcd: o3d.geometry.PointCloud, 
-                      inner_pcd: o3d.geometry.PointCloud, 
-                      target_ratio: float) -> Tuple[Optional[o3d.geometry.PointCloud], float]:
-        """Apply scaling transformation to inner scan."""
-        try:
-            # Check what methods are available in scaling processor
-            if hasattr(self.scaling_processor, 'apply_proven_scaling'):
-                scaled_pcd, scale_factor = self.scaling_processor.apply_proven_scaling(
-                    reference_pcd, inner_pcd, target_ratio=target_ratio
-                )
-            elif hasattr(self.scaling_processor, 'apply_scaling'):
-                scaled_pcd, scale_factor = self.scaling_processor.apply_scaling(
-                    reference_pcd, inner_pcd, target_ratio=target_ratio
-                )
-            else:
-                # Manual scaling implementation
-                print("Using manual scaling implementation...")
-                scale_factor = self._calculate_scale_factor(reference_pcd, inner_pcd, target_ratio)
-                transformation_matrix = np.eye(4)
-                transformation_matrix[:3, :3] *= scale_factor
-                scaled_pcd = copy.deepcopy(inner_pcd)
-                scaled_pcd.transform(transformation_matrix)
-                
-            return scaled_pcd, scale_factor
+    def get_output_visualization_files(self) -> Dict[str, str]:
+        """Get list of output visualization files with source filename integration."""
+        viz_files = {}
+        
+        if hasattr(self.inner_scan1_path, 'name'):
+            scan1_name = Path(self.inner_scan1_path.name).stem
+            # Clean filename for filesystem safety
+            clean_name = scan1_name.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')
+            clean_name = clean_name.replace('_converted', '').replace('converted_', '')
             
-        except Exception as e:
-            print(f"ERROR in scaling: {e}")
-            print("Using manual scaling fallback...")
-            scale_factor = self._calculate_scale_factor(reference_pcd, inner_pcd, target_ratio)
-            transformation_matrix = np.eye(4)
-            transformation_matrix[:3, :3] *= scale_factor
-            scaled_pcd = copy.deepcopy(inner_pcd)
-            scaled_pcd.transform(transformation_matrix)
-            return scaled_pcd, scale_factor
-    
-    def _calculate_scale_factor(self, reference_pcd: o3d.geometry.PointCloud, 
-                               inner_pcd: o3d.geometry.PointCloud, 
-                               target_ratio: float) -> float:
-        """Calculate scale factor using 95th percentile method."""
-        try:
-            # Get 95th percentile radius for both point clouds
-            ref_points = np.asarray(reference_pcd.points)
-            inner_points = np.asarray(inner_pcd.points)
+            viz_files['scan1_noise_removal'] = f"v3_noise_removal_analysis_{clean_name}.png"
+            viz_files['scan1_alignment'] = f"alignment_analysis_scan1_{clean_name}.png"
+            viz_files['detailed_overlay'] = f"detailed_alignment_overlay_analysis_{clean_name}.png"
+        
+        if self.dual_scan_mode and hasattr(self.inner_scan2_path, 'name'):
+            scan2_name = Path(self.inner_scan2_path.name).stem
+            clean_name = scan2_name.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')
+            clean_name = clean_name.replace('_converted', '').replace('converted_', '')
             
-            ref_center = reference_pcd.get_center()
-            inner_center = inner_pcd.get_center()
-            
-            # Calculate radial distances from center
-            ref_distances = np.sqrt(np.sum((ref_points - ref_center)**2, axis=1))
-            inner_distances = np.sqrt(np.sum((inner_points - inner_center)**2, axis=1))
-            
-            # 95th percentile characteristic radius
-            ref_radius = np.percentile(ref_distances, 95)
-            inner_radius = np.percentile(inner_distances, 95)
-            
-            # Calculate scale factor
-            if inner_radius > 0:
-                scale_factor = (ref_radius / inner_radius) * target_ratio
-            else:
-                scale_factor = 1.0
-            
-            print(f"Scale calculation:")
-            print(f"  Reference 95th percentile radius: {ref_radius:.2f}")
-            print(f"  Inner scan 95th percentile radius: {inner_radius:.2f}")
-            print(f"  Calculated scale factor: {scale_factor:.6f}")
-            
-            return scale_factor
-            
-        except Exception as e:
-            print(f"ERROR in scale calculation: {e}")
-            return 1.0  # Default to no scaling
-    
-    def _apply_alignment(self, reference_pcd: o3d.geometry.PointCloud, 
-                        scaled_pcd: o3d.geometry.PointCloud) -> Optional[o3d.geometry.PointCloud]:
-        """Apply complete alignment to scaled inner scan."""
-        try:
-            if hasattr(self.alignment_processor, 'apply_complete_alignment'):
-                aligned_pcd = self.alignment_processor.apply_complete_alignment(
-                    reference_pcd, scaled_pcd
-                )
-            elif hasattr(self.alignment_processor, 'align_point_clouds'):
-                aligned_pcd = self.alignment_processor.align_point_clouds(
-                    reference_pcd, scaled_pcd
-                )
-            else:
-                # Manual ICP alignment
-                print("Using manual ICP alignment...")
-                aligned_pcd = self._manual_icp_alignment(reference_pcd, scaled_pcd)
-                
-            return aligned_pcd
-            
-        except Exception as e:
-            print(f"ERROR in alignment: {e}")
-            print("Using manual ICP alignment...")
-            return self._manual_icp_alignment(reference_pcd, scaled_pcd)
-    
-    def _manual_icp_alignment(self, reference_pcd: o3d.geometry.PointCloud, 
-                             source_pcd: o3d.geometry.PointCloud) -> Optional[o3d.geometry.PointCloud]:
-        """Manual ICP alignment implementation."""
-        try:
-            # Center alignment first
-            ref_center = reference_pcd.get_center()
-            source_center = source_pcd.get_center()
-            translation = ref_center - source_center
-            
-            # Apply translation
-            aligned_pcd = copy.deepcopy(source_pcd)
-            aligned_pcd.translate(translation)
-            
-            # Apply ICP for fine alignment
-            threshold = 0.02  # 2cm threshold
-            trans_init = np.identity(4)
-            
-            reg_p2p = o3d.pipelines.registration.registration_icp(
-                aligned_pcd, reference_pcd, threshold, trans_init,
-                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-                o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=2000)
-            )
-            
-            # Apply final transformation
-            aligned_pcd.transform(reg_p2p.transformation)
-            
-            print(f"ICP alignment completed - fitness: {reg_p2p.fitness:.4f}")
-            return aligned_pcd
-            
-        except Exception as e:
-            print(f"ERROR in manual ICP: {e}")
-            # Return source with only translation
-            aligned_pcd = copy.deepcopy(source_pcd)
-            ref_center = reference_pcd.get_center()
-            source_center = source_pcd.get_center()
-            translation = ref_center - source_center
-            aligned_pcd.translate(translation)
-            return aligned_pcd
+            viz_files['scan2_noise_removal'] = f"v3_noise_removal_analysis_{clean_name}.png"
+            viz_files['scan2_alignment'] = f"alignment_analysis_scan2_{clean_name}.png"
+        
+        # Standard files that don't change
+        viz_files['heatmap_analysis'] = "heatmap_wear_analysis.png"
+        viz_files['dual_scan_comparison'] = "dual_scan_comparison_analysis.png"
+        
+        return viz_files
     
     def _step_4_create_final_visualizations(self) -> bool:
         """Step 4: Create final visualizations using existing visualization.py methods."""
@@ -586,7 +489,6 @@ class MillAnalysisProcessor:
         print("SUCCESS: Final visualizations completed using visualization.py")
         return True
     
-    # Move the summary code into a method of MillAnalysisProcessor
     def _step_5_final_summary(self, start_time):
         """Step 5: Generate final processing summary."""
         total_time = time.time() - start_time
@@ -620,6 +522,7 @@ class MillAnalysisProcessor:
         if self.dual_scan_mode:
             print(f"  Scan 2 scale factor: {self.scale_factor2:.6f}")
         print(f"  Target ratio: 1:1")
+        print(f"  Fixed scaling enabled: {self.alignment_processor.enable_fixed_scaling}")
     
         # Check alignment quality
         if self.inner_scan1_aligned and self.reference_pcd:
@@ -632,11 +535,20 @@ class MillAnalysisProcessor:
                 scan2_center = self.inner_scan2_aligned.get_center()
                 distance2 = np.linalg.norm(scan2_center - ref_center)
                 print(f"  Scan 2 center distance: {distance2:.2f}mm")
+                
+                # If post-processing ICP was applied, show information
+                if self.alignment_processor.post_icp_results:
+                    print(f"  Post-processing ICP applied between scans: YES")
+                    icp_results = self.alignment_processor.post_icp_results
+                    print(f"  ICP improvement: {icp_results.get('improvement_mm', 0):.1f}mm")
+                    print(f"  ICP quality: {icp_results.get('quality', 'Unknown')}")
+                    print(f"  Final scan separation: {icp_results.get('final_separation', 0):.1f}mm")
     
         print(f"Processing:")
         print(f"  Total time: {total_time:.1f} seconds")
         print(f"  Processing approach: Truly sequential (load->process->save->cleanup)")
         print(f"  Memory management: Aggressive cleanup between scans")
+        print(f"  Enhanced alignment: Fixed scaling and auto post-processing ICP")
         print(f"  Status: SUCCESSFUL")
     
         print(f"\nVisualization Output:")
@@ -657,6 +569,7 @@ class MillAnalysisProcessor:
             print(f"  Scan 1 aligned: {'YES' if self.inner_scan1_aligned else 'NO'}")
             print(f"  Scan 2 aligned: {'YES' if self.inner_scan2_aligned else 'NO'}")
             print(f"  Ready for comparison: {'YES' if (self.inner_scan1_aligned and self.inner_scan2_aligned) else 'NO'}")
+            print(f"  Post-ICP alignment: {'APPLIED' if self.alignment_processor.post_icp_results else 'NOT APPLIED'}")
         else:
             print(f"  Single scan aligned: {'YES' if self.inner_scan1_aligned else 'NO'}")
     
@@ -747,6 +660,11 @@ class MillAnalysisProcessor:
 
         print("SUCCESS: Truly sequential dual-scan heatmap analysis completed!")
 
+        # Get post-processing ICP results if available
+        post_icp_info = None
+        if self.alignment_processor.post_icp_results:
+            post_icp_info = self.alignment_processor.post_icp_results
+
         # Combine results with proper heatmap status
         return {
             'processing_successful': True,
@@ -763,75 +681,6 @@ class MillAnalysisProcessor:
                 'scan1': self.scale_factor1,
                 'scan2': self.scale_factor2 if self.dual_scan_mode else None
             },
-            'visualization_files': self._get_output_visualization_files()
+            'post_processing_icp': post_icp_info,  # Add post-processing ICP results
+            'visualization_files': self.get_output_visualization_files()
         }
-    
-    def _get_output_visualization_files(self) -> Dict[str, str]:
-        """Get list of output visualization files with source filename integration."""
-        viz_files = {}
-        
-        if hasattr(self.inner_scan1_path, 'name'):
-            scan1_name = Path(self.inner_scan1_path.name).stem
-            # Clean filename for filesystem safety
-            clean_name = scan1_name.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')
-            clean_name = clean_name.replace('_converted', '').replace('converted_', '')
-            
-            viz_files['scan1_noise_removal'] = f"v3_noise_removal_analysis_{clean_name}.png"
-            viz_files['scan1_alignment'] = f"alignment_analysis_scan1_{clean_name}.png"
-            viz_files['detailed_overlay'] = f"detailed_alignment_overlay_analysis_{clean_name}.png"
-        
-        if self.dual_scan_mode and hasattr(self.inner_scan2_path, 'name'):
-            scan2_name = Path(self.inner_scan2_path.name).stem
-            clean_name = scan2_name.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')
-            clean_name = clean_name.replace('_converted', '').replace('converted_', '')
-            
-            viz_files['scan2_noise_removal'] = f"v3_noise_removal_analysis_{clean_name}.png"
-            viz_files['scan2_alignment'] = f"alignment_analysis_scan2_{clean_name}.png"
-        
-        # Standard files that don't change
-        viz_files['heatmap_analysis'] = "heatmap_wear_analysis.png"
-        viz_files['dual_scan_comparison'] = "dual_scan_comparison_analysis.png"
-        
-        return viz_files
-
-
-if __name__ == "__main__":
-    print("=" * 60)
-    print("TESTING ENHANCED MILL ANALYSIS PROCESSOR WITH SOURCE FILENAME INTEGRATION")
-    print("=" * 60)
-    
-    # Test with hardcoded paths (default behavior)
-    print("\nTest 1: Default behavior with source filename integration")
-    processor = MillAnalysisProcessor(use_file_selector=False, dual_scan_mode=False)
-    success = processor.run_complete_pipeline()
-    
-    if success:
-        print("SUCCESS: Sequential pipeline completed with source filename integration")
-        
-        # Show expected output files
-        viz_files = processor._get_output_visualization_files()
-        print("Expected visualization files:")
-        for viz_type, filename in viz_files.items():
-            print(f"  {viz_type}: {filename}")
-    else:
-        print("ERROR: Sequential pipeline failed")
-    
-    print("\nEnhanced Main Processor Features:")
-    print("- Source filename integration in all visualizations")
-    print("- Improved traceability of analysis results")
-    print("- Filesystem-safe filename generation")
-    print("- Comprehensive output file tracking")
-    print("- Enhanced processing transparency")
-    print("- Backward compatibility maintained")
-    
-    print("\nExample Output Files:")
-    print("- v3_noise_removal_analysis_2_28_Oct_2023_converted.png")
-    print("- alignment_analysis_scan1_2_28_Oct_2023_converted.png")
-    print("- detailed_alignment_overlay_analysis_2_28_Oct_2023_converted.png")
-        
-    print("\nReady for integration with enhanced visualization module")
-    
-    
-    
-    # Add this method to the MillAnalysisProcessor class (indent properly)
-   
