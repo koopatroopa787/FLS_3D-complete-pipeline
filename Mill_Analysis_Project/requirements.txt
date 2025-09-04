@@ -1,0 +1,25 @@
+# Core 3D Processing Requirements - Clean Version (No GPU)
+# Mill Analysis Project - CPU-Only Implementation
+
+# Essential 3D Processing
+open3d
+numpy>=1.22.0,<2.6
+matplotlib>=3.7.0
+
+# File Format Support
+pye57>=0.3.9
+
+# Scientific Computing
+scipy>=1.9.0
+
+# Visualization Enhancements
+plotly>=5.14.0
+
+# Development and Type Support
+typing-extensions>=4.7.0
+
+# Development Dependencies (optional)
+pytest>=7.4.0
+
+# Note: All GPU dependencies removed
+# This version is optimized for CPU-only processing
