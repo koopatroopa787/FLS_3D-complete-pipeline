@@ -594,6 +594,8 @@ class MillAnalysisProcessor:
         if not pipeline_success:
             return None
         
+        heatmap_analysis = {}
+
         # Import heatmap generator
         try:
             heatmap_generator = WearHeatmapGenerator()
@@ -611,6 +613,7 @@ class MillAnalysisProcessor:
             
             # Call the enhanced heatmap generator
             heatmap_result = heatmap_generator.generate_enhanced_heatmap(scan1, scan2)
+            heatmap_analysis = getattr(heatmap_generator, 'heatmap_analysis', {})
             heatmap_generated = True
             
             print("SUCCESS: Enhanced heatmap analysis completed!")
@@ -621,14 +624,9 @@ class MillAnalysisProcessor:
             heatmap_generated = False
 
         # Also use visualization.py for heatmap if available
-        if hasattr(self.visualization_processor, 'create_heatmap_visualization'):
+        if heatmap_generated and hasattr(self.visualization_processor, 'create_heatmap_visualization'):
             try:
                 print("Creating heatmap visualization using visualization.py...")
-                
-                # Get heatmap analysis from generator
-                heatmap_analysis = {}
-                if hasattr(heatmap_generator, 'heatmap_analysis'):
-                    heatmap_analysis = heatmap_generator.heatmap_analysis
                 
                 # Create combined data structure with proper heatmap availability flag
                 combined_heatmap_data = {
